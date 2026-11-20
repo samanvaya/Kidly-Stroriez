@@ -16,7 +16,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-009 | Safety and quality evaluation set for prompts | SR-01..SR-06 | High | M | idea | - |
 | BL-010 | Pricing, free tier and paid plan | FR-60..FR-63 | Medium | L | idea | open question 5 |
 | BL-011 | Compliance review for children's apps per market | NFR-04 | High | M | idea | open question 4 |
-| BL-012 | Support NVIDIA Nemotron Ultra AI provider | Open question 7, NFR-01, NFR-06 | High | S | draft | - |
+| BL-012 | Support NVIDIA Nemotron Ultra AI provider | Open question 7, NFR-01, NFR-06 | High | S | ready | - |
 
 ## Next up
 1. BL-012 - add NVIDIA Nemotron Ultra support (Max)
