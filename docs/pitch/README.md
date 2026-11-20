@@ -9,7 +9,7 @@ One A4 page for pitching Kidly Storiez to the hackathon jury.
 - `one-pager.html`: the page itself. Open it in a browser; it loads its fonts from Google Fonts. Print it to PDF from the browser for the best result.
 - `one-pager.pdf` and `one-pager.png`: exports for quick viewing. They were made without access to the web fonts, so the typefaces differ slightly from the HTML.
 
-The team name and contact in the footer are still placeholders.
+The contact in the footer is still a placeholder.
 
 ## Where the numbers come from
 
