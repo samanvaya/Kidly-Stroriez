@@ -62,3 +62,6 @@ coverage/
 test-results/
 playwright-report/
 evidence/
+
+# Live eval output (may contain generated stories)
+eval/results/
