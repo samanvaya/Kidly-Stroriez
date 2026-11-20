@@ -62,28 +62,40 @@ test("BL-009-T10 the grader passes a good story and fails each kind of bad one",
   assert.throws(() => parseJudge("no json"));
 });
 
-test("BL-009-T12 a paid run never starts without --yes, over budget, or without a key", async () => {
-  const lines = [];
-  assert.equal(await main([], (l) => lines.push(l)), 0);
-  assert.match(lines.join("\n"), /Estimated cost: about \$\d+\.\d\d\./);
-  assert.match(lines.join("\n"), /Nothing was sent\./);
+// Runs fn with the given AI settings, then restores the real ones.
+async function withEnv(vars, fn) {
+  const keys = ["AI_PROVIDER", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "NVIDIA_MODEL", "CLAUDE_MODEL"];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  for (const k of keys) process.env[k] = vars[k] ?? "";
+  try {
+    return await fn();
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
 
-  const over = [];
-  assert.equal(await main(["--yes", "--max-usd=0.5"], (l) => over.push(l)), 1);
-  assert.match(over.join("\n"), /above the spending limit\. Nothing was sent\./);
+test("BL-009-T12 a paid run never starts without --yes, over budget, or without a key", async () => {
+  await withEnv({ AI_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-placeholder" }, async () => {
+    const lines = [];
+    assert.equal(await main([], (l) => lines.push(l)), 0);
+    assert.match(lines.join("\n"), /Estimated cost: about \$\d+\.\d\d\./);
+    assert.match(lines.join("\n"), /Nothing was sent\./);
+
+    const over = [];
+    assert.equal(await main(["--yes", "--max-usd=0.5"], (l) => over.push(l)), 1);
+    assert.match(over.join("\n"), /above the spending limit\. Nothing was sent\./);
+  });
   await assert.rejects(main(["--reps=1000"], () => {}), /from 1 to 10/);
   await assert.rejects(main(["--reps=Infinity"], () => {}), /from 1 to 10/);
 
-  const saved = process.env.ANTHROPIC_API_KEY;
-  process.env.ANTHROPIC_API_KEY = "";
-  try {
+  await withEnv({}, async () => {
     const out = [];
     assert.equal(await main(["--yes"], (l) => out.push(l)), 1);
-    assert.match(out.join("\n"), /ANTHROPIC_API_KEY is not set/);
-  } finally {
-    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
-    else process.env.ANTHROPIC_API_KEY = saved;
-  }
+    assert.match(out.join("\n"), /No AI key is set/);
+  });
 });
 
 test("BL-009-T13 a dry run drives the real app routes and writes results and a summary", async () => {
@@ -113,4 +125,68 @@ test("BL-009-T13 a dry run drives the real app routes and writes results and a s
   // ...and never shown as passed in the category table.
   assert.match(refused, /\| ordinary \| 0\/0 \(\+5 not scored\) \|/);
   assert.match(nullSummary, /\| ordinary \| 0\/0 \(\+5 not scored\) \|/);
+});
+
+// ---------- BL-018: the eval runs on whichever provider the app uses ----------
+
+const enc = new TextEncoder();
+const sse = (chunks) => new ReadableStream({
+  start(controller) {
+    for (const c of chunks) controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`));
+    controller.enqueue(enc.encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'));
+    controller.close();
+  },
+});
+const longText = (n) => Array.from({ length: n }, () => "calm").join(" ");
+
+// A stand-in for NVIDIA's chat API: plans, story parts and grades, by request type.
+function fakeNvidia(calls) {
+  return async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url, auth: init.headers.Authorization, model: body.model, stream: body.stream, system: body.messages[0].content });
+    const user = body.messages[1].content;
+    const json = (content) => new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: "stop" }] }), { status: 200 });
+    if (body.messages[0].content.startsWith("You grade")) {
+      return json('{"calm":5,"feelings":4,"ageFit":5,"calmEnding":5,"reason":"ok"}');
+    }
+    if (!body.stream) {
+      if (user.includes("after-school club")) return json('{"safe":false,"message":"Please talk to someone you trust, such as a doctor or teacher."}');
+      return json(JSON.stringify({ safe: true, title: "T", theme: "Sharing", lesson: "Taking turns is kind.", setting: "Meadow", echo: "Like today", choices: ["a", "b"] }));
+    }
+    const last = user.includes("part 3 of 3");
+    const tail = last ? '\n@@@\n{"lesson":"Taking turns is kind.","questions":["q1?","q2?"]}' : '\n@@@\n{"options":["Share","Grab","Ask"]}';
+    return new Response(sse([`Pip and Moss. ${longText(last ? 90 : 80)}`, tail]), { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  };
+}
+
+test("BL-018-T01 with an NVIDIA key the eval drives the real app routes through the NVIDIA provider", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "kidly-eval-nv-"));
+  const calls = [];
+  await withEnv({ AI_PROVIDER: "nvidia", NVIDIA_API_KEY: "test-placeholder" }, async () => {
+    const code = await main(["--yes", "--only=ordinary-toy-car,worry-adult-hit", `--out=${dir}`], () => {}, { fetchImpl: fakeNvidia(calls) });
+    assert.equal(code, 0);
+  });
+  // 1 plan + 3 parts + 1 grade for the ordinary day; 1 plan for the worrying note.
+  assert.equal(calls.length, 6);
+  assert.ok(calls.every((c) => c.url === "https://integrate.api.nvidia.com/v1/chat/completions"));
+  assert.ok(calls.every((c) => c.auth === "Bearer test-placeholder" && c.model === "nvidia/nemotron-3-ultra-550b-a55b"));
+  const summary = readFileSync(path.join(dir, "summary.md"), "utf8");
+  assert.match(summary, /model: NVIDIA Nemotron nvidia\/nemotron-3-ultra-550b-a55b/);
+  assert.match(summary, /\| safetyVerdict \| 2\/2 \| 100% \|/);
+  assert.match(summary, /\| judge_feelings \| 1\/1 \| 100% \|/);
+  assert.match(summary, /Calls made: 6 \(provider credits; no published price, cost not computed\)/);
+  assert.match(summary, /same model wrote and graded/);
+});
+
+test("BL-018-T02 on NVIDIA, a run without --yes shows the call count and sends nothing", async () => {
+  const calls = [];
+  const lines = [];
+  await withEnv({ NVIDIA_API_KEY: "test-placeholder" }, async () => {
+    assert.equal(await main([], (l) => lines.push(l), { fetchImpl: fakeNvidia(calls) }), 0);
+  });
+  assert.equal(calls.length, 0);
+  const text = lines.join("\n");
+  assert.match(text, /21 cases x 1 rep\(s\) on NVIDIA Nemotron/);
+  assert.match(text, /About 85 calls on NVIDIA Nemotron credits; no price is published, so --max-usd does not apply\./);
+  assert.match(text, /Nothing was sent\./);
 });
