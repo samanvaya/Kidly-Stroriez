@@ -127,7 +127,7 @@ test("BL-009-T13 a dry run drives the real app routes and writes results and a s
   assert.match(nullSummary, /\| ordinary \| 0\/0 \(\+5 not scored\) \|/);
 });
 
-// ---------- BL-018: the eval runs on whichever provider the app uses ----------
+// ---------- BL-020: the eval runs on whichever provider the app uses ----------
 
 const enc = new TextEncoder();
 const sse = (chunks) => new ReadableStream({
@@ -159,7 +159,7 @@ function fakeNvidia(calls) {
   };
 }
 
-test("BL-018-T01 with an NVIDIA key the eval drives the real app routes through the NVIDIA provider", async () => {
+test("BL-020-T01 with an NVIDIA key the eval drives the real app routes through the NVIDIA provider", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "kidly-eval-nv-"));
   const calls = [];
   await withEnv({ AI_PROVIDER: "nvidia", NVIDIA_API_KEY: "test-placeholder" }, async () => {
@@ -178,7 +178,7 @@ test("BL-018-T01 with an NVIDIA key the eval drives the real app routes through 
   assert.match(summary, /same model wrote and graded/);
 });
 
-test("BL-018-T02 on NVIDIA, a run without --yes shows the call count and sends nothing", async () => {
+test("BL-020-T02 on NVIDIA, a run without --yes shows the call count and sends nothing", async () => {
   const calls = [];
   const lines = [];
   await withEnv({ NVIDIA_API_KEY: "test-placeholder" }, async () => {
@@ -191,7 +191,7 @@ test("BL-018-T02 on NVIDIA, a run without --yes shows the call count and sends n
   assert.match(text, /Nothing was sent\./);
 });
 
-test("BL-018-T03 refused and failed calls are still counted, and a missing key names the provider", async () => {
+test("BL-020-T03 refused and failed calls are still counted, and a missing key names the provider", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "kidly-eval-nv-"));
   const calls = [];
   const base = fakeNvidia(calls);
