@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_NVIDIA_MODEL } from "../src/nvidia.js";
 import { loadDotEnv } from "../src/env.js";
 import { JUDGE_SYSTEM, codeChecks, judgeChecks, judgePrompt, parseJudge } from "./grade.js";
 
@@ -226,17 +227,78 @@ export async function runCase(base, c, signal) {
   return output;
 }
 
-async function judge(client, model, c, output, signal) {
-  for (let attempt = 1; attempt <= 2; attempt++) {
+// Judge with Claude: its own model and a higher effort than the app (EVAL_GRADER_MODEL).
+function claudeJudge(client, model) {
+  return async (user, signal) => {
     const m = await client.beta.messages.create(
       {
         model, max_tokens: 4000, output_config: { effort: "medium" },
         betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
-        system: JUDGE_SYSTEM, messages: [{ role: "user", content: judgePrompt(c, output) }],
+        system: JUDGE_SYSTEM, messages: [{ role: "user", content: user }],
       },
       { signal },
     );
-    const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    return m.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  };
+}
+
+// Judge with any app provider (e.g. NVIDIA): the same model grades its own stories,
+// which can be lenient; the summary says so.
+function providerJudge(provider) {
+  return async (user, signal) => {
+    const reply = await provider.plan({ system: JUDGE_SYSTEM, user, signal });
+    if (reply.refused) throw new InfraError("judge refused to grade");
+    return reply.text;
+  };
+}
+
+// Records each call of a non-Claude provider (model, role) for the summary. NVIDIA
+// does not report token usage to the app, so usage stays empty and cost is not priced.
+function recordingProvider(provider, model, ledger, state) {
+  const track = (promise) => {
+    ledger.pending.add(promise);
+    promise.then(() => ledger.pending.delete(promise), () => ledger.pending.delete(promise));
+    return promise;
+  };
+  // Every call is counted, also refused, failed or stopped ones (they may still use credits).
+  const note = (caseId, system, ok) =>
+    ledger.calls.push({ caseId, role: system === JUDGE_SYSTEM ? "judge" : "app", model, usage: {}, ok });
+  return {
+    label: provider.label,
+    plan(args) {
+      const caseId = state.case?.id;
+      return track(provider.plan(args).then(
+        (r) => (note(caseId, args.system, !r.refused), r),
+        (err) => {
+          note(caseId, args.system, false);
+          throw err;
+        },
+      ));
+    },
+    async *streamStory(args) {
+      const caseId = state.case?.id;
+      let done;
+      const finished = new Promise((r) => (done = r));
+      track(finished);
+      let ok = false;
+      let refused = false;
+      try {
+        for await (const event of provider.streamStory(args)) {
+          if (event.type === "refused") refused = true;
+          yield event;
+        }
+        ok = !refused;
+      } finally {
+        note(caseId, args.system, ok);
+        done();
+      }
+    },
+  };
+}
+
+async function judge(judgeFn, c, output, signal) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const text = await judgeFn(judgePrompt(c, output), signal);
     try {
       return parseJudge(text);
     } catch (err) {
@@ -309,7 +371,12 @@ export function summarise(rows, errors, meta) {
   const served = [...new Set(rows.flatMap((r) => r.calls.map((c) => c.model)))];
   lines.push("");
   lines.push(`Models that served calls: ${served.join(", ") || "none"}`);
-  lines.push(`Cost from recorded tokens: $${meta.cost.toFixed(3)}${meta.unpriced ? " (some calls had no known price)" : ""}`);
+  if (meta.priced === false) {
+    lines.push(`Calls made: ${meta.callCount}${meta.failedCalls ? ` (${meta.failedCalls} refused, failed or stopped)` : ""} (provider credits; no published price, cost not computed)`);
+    lines.push("Note: the same model wrote and graded the stories, so judge scores may be lenient.");
+  } else {
+    lines.push(`Cost from recorded tokens: $${meta.cost.toFixed(3)}${meta.unpriced ? " (some calls had no known price)" : ""}`);
+  }
   return lines.join("\n");
 }
 
@@ -347,45 +414,78 @@ function writeEvidence(summary, label) {
 }
 
 // ---------- main ----------
-export async function main(argv, log = console.log) {
+export async function main(argv, log = console.log, { fetchImpl } = {}) {
   const args = parseArgs(argv);
   if (!args.dryRun) loadDotEnv(path.join(root, ".env"));
   // The app reads its settings when imported, so import it only after .env is loaded.
-  const { createApp } = await import("../src/app.js");
-  const model = process.env.CLAUDE_MODEL || "claude-opus-5-5";
-  const judgeModel = process.env.EVAL_GRADER_MODEL || "claude-opus-5-5";
+  const { createAnthropicProvider, createApp, resolveProvider } = await import("../src/app.js");
   const cases = loadCases(args.only);
-  const est = estimate(cases, args.reps, model, judgeModel);
+  const state = { case: null };
+  const ledger = { calls: [], pending: new Set() };
 
-  if (!args.dryRun) {
-    log(`${cases.length} cases x ${args.reps} rep(s) on ${model} (judge: ${judgeModel}).`);
-    log(`Estimated cost: about $${est.toFixed(2)}. Spending limit: $${args.maxUsd.toFixed(2)}.`);
+  // Which AI runs the eval: the stand-in (dry run), or whatever the app would use
+  // (AI_PROVIDER / NVIDIA_API_KEY / ANTHROPIC_API_KEY, see src/app.js resolveProvider).
+  let provider = null;
+  let judgeFn = null;
+  let providerName = "stand-in";
+  let model = "stand-in";
+  let judgeModel = "stand-in";
+  let priced = true;
+  if (args.dryRun) {
+    const client = recording(fakeClient(args.dryRun, state), ledger, state);
+    provider = createAnthropicProvider(client);
+    judgeFn = claudeJudge(client, "stand-in");
+  } else {
+    const resolved = resolveProvider(process.env, { fetchImpl });
+    if (!resolved.provider) {
+      const wanted = (process.env.AI_PROVIDER || "").trim().toLowerCase();
+      const keyFor = { nvidia: "NVIDIA_API_KEY", anthropic: "ANTHROPIC_API_KEY" }[wanted];
+      log(keyFor
+        ? `AI_PROVIDER=${wanted} needs ${keyFor} (in .env or the environment). Nothing was sent.`
+        : "No AI key is set. Put NVIDIA_API_KEY (or ANTHROPIC_API_KEY) in .env. Nothing was sent.");
+      return 1;
+    }
+    // Claude is recognised by the provider's own label, not by a copy of its text.
+    const claudeLabel = createAnthropicProvider(null).label;
+    if (resolved.label === claudeLabel) {
+      providerName = "Claude";
+      model = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+      judgeModel = process.env.EVAL_GRADER_MODEL || "claude-opus-5-5";
+      if (args.yes) {
+        const { default: Anthropic } = await import("@anthropic-ai/sdk");
+        const client = recording(new Anthropic(), ledger, state);
+        provider = createAnthropicProvider(client);
+        judgeFn = claudeJudge(client, judgeModel);
+      }
+    } else {
+      providerName = resolved.label.replace(/^live \((.*)\)$/, "$1");
+      model = process.env.NVIDIA_MODEL?.trim() || DEFAULT_NVIDIA_MODEL;
+      judgeModel = `${model} (same model)`;
+      priced = false;
+      provider = recordingProvider(resolved.provider, model, ledger, state);
+      judgeFn = providerJudge(provider);
+    }
+
+    log(`${cases.length} cases x ${args.reps} rep(s) on ${providerName} ${model} (judge: ${judgeModel}).`);
+    if (priced) {
+      const est = estimate(cases, args.reps, model, judgeModel);
+      log(`Estimated cost: about $${est.toFixed(2)}. Spending limit: $${args.maxUsd.toFixed(2)}.`);
+      if (args.yes && est > args.maxUsd) {
+        log(`The estimate is above the spending limit. Nothing was sent. Raise it with --max-usd=${Math.ceil(est)} if you mean it.`);
+        return 1;
+      }
+    } else {
+      const calls = cases.reduce((n, c) => n + (c.expectSafe ? 5 : 1), 0) * args.reps;
+      log(`About ${calls} calls on ${providerName} credits; no price is published, so --max-usd does not apply.`);
+    }
     if (!args.yes) {
-      log("Nothing was sent. Run again with --yes to spend it, or --dry-run to test the eval for free.");
+      log("Nothing was sent. Run again with --yes to run it, or --dry-run to test the eval for free.");
       return 0;
     }
-    if (est > args.maxUsd) {
-      log(`The estimate is above the spending limit. Nothing was sent. Raise it with --max-usd=${Math.ceil(est)} if you mean it.`);
-      return 1;
-    }
-  }
-  let inner;
-  const state = { case: null };
-  if (args.dryRun) {
-    inner = fakeClient(args.dryRun, state);
-  } else {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      log("ANTHROPIC_API_KEY is not set (put it in .env). Nothing was sent.");
-      return 1;
-    }
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    inner = new Anthropic();
   }
 
-  const ledger = { calls: [], pending: new Set() };
-  const client = recording(inner, ledger, state);
   const callsFor = (id) => ledger.calls.filter((c) => c.caseId === id);
-  const app = createApp({ client, limit: { windowMs: 60_000, max: 100_000 } });
+  const app = createApp({ provider, limit: { windowMs: 60_000, max: 100_000 } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -402,7 +502,7 @@ export async function main(argv, log = console.log) {
     for (let rep = 1; rep <= args.reps && !stoppedForBudget; rep++) {
       for (const c of cases) {
         // Calls still running are counted at a cautious $0.10 each.
-        if (cost(ledger.calls).usd + 0.1 * ledger.pending.size >= args.maxUsd) {
+        if (priced && cost(ledger.calls).usd + 0.1 * ledger.pending.size >= args.maxUsd) {
           stoppedForBudget = true;
           log(`Stopped: the spending limit of $${args.maxUsd.toFixed(2)} was reached.`);
           break;
@@ -422,7 +522,7 @@ export async function main(argv, log = console.log) {
             // A grader failure must not throw away the code checks: its own checks
             // become n/a and the failure is counted separately.
             try {
-              judged = await judge(client, judgeModel, c, output, controller.signal);
+              judged = await judge(judgeFn, c, output, controller.signal);
               Object.assign(checks, judgeChecks(judged));
             } catch (err) {
               if (controller.signal.aborted) throw err;
@@ -458,7 +558,7 @@ export async function main(argv, log = console.log) {
   }
 
   const spent = cost(ledger.calls);
-  const summary = (stoppedForBudget ? `STOPPED EARLY: spending limit $${args.maxUsd} reached.\n` : "") + summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : model, judgeModel: args.dryRun ? "stand-in" : judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced });
+  const summary = (stoppedForBudget ? `STOPPED EARLY: spending limit $${args.maxUsd} reached.\n` : "") + summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : `${providerName} ${model}`, judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced, priced, callCount: ledger.calls.length, failedCalls: ledger.calls.filter((c) => c.ok === false).length });
   writeFileSync(path.join(outDir, "summary.md"), summary + "\n");
   if (args.writeEvidence) writeEvidence(summary, args.label);
   log("");

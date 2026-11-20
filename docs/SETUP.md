@@ -45,7 +45,8 @@ npm start            # http://localhost:3000
 ```bash
 npm run eval                      # shows the cases and the estimated cost, sends nothing
 npm run eval -- --dry-run         # tests the eval itself with a stand-in AI, free
-npm run eval -- --yes             # real run with ANTHROPIC_API_KEY from .env (about $2.50)
+npm run eval -- --yes             # real run on the AI in .env: NVIDIA (credits, about 85
+                                  # calls) or Claude (about $2.50, capped by --max-usd)
 ```
 
 Add `--label=before --write-evidence` to save the summary in `docs/evidence/BL-009.md`.
