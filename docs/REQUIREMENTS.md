@@ -101,9 +101,10 @@ Images were deferred in the session because they take longer to generate than te
 | ID | Requirement | Priority | Source |
 | --- | --- | --- | --- |
 | FR-50 | The parent has an account. Children do not have accounts. | Should | P |
-| FR-51 | Finished stories are saved and can be re-read. | Should | P |
+| FR-51 | Finished stories are saved in a story library and can be viewed and re-read later. | Should | P |
 | FR-52 | Parent-only screens sit behind a parent gate. | Should | P |
 | FR-53 | The parent can delete any story and all of their data. | Should | P |
+| FR-54 | Stories you created or already added to your library can be shared via link; a recipient can view the shared story, add it to their own library, and re-share it from there. | Could | P |
 
 ### 5.7 Monetisation
 
@@ -138,6 +139,7 @@ Monetisation was raised in the session without specifics. Everything here is a p
 | NFR-05 | Story text is large and legible enough for a child to follow along. | Should | P |
 | NFR-06 | The architecture keeps AI calls on a backend so keys, prompts and safety checks are not in the app. | Should | P |
 | NFR-07 | Support for more than one language. | Could | P |
+| NFR-08 | Optional parallel pre-generation: after part 1 streams immediately for fast reaction time, continuations for every choice option can be generated via separate parallel prompts in the background so reading starts right away while the full branching story finishes faster. | Could | P |
 
 ## 8. Scope by phase
 
