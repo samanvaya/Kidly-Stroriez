@@ -22,13 +22,14 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-015 | (cancelled) NVIDIA provider from Samy's side: duplicate of BL-012, which Max shipped in PR #5 | - | - | - | cancelled | - |
 | BL-016 | Sign the previous plan and the offered options server-side (story history and change requests cannot be edited by the browser) | SR-05, NFR-06 | High | S | idea | - |
 | BL-018 | Share library stories via link (add to recipient's library) | FR-54 | Medium | M | idea | BL-004 |
-| BL-019 | Optional parallel pre-generation of all story choice continuations | NFR-01, NFR-08, FR-23, FR-26 | High | M | idea | - |
+| BL-019 | Optional parallel pre-generation of all story choice continuations | NFR-01, NFR-08, FR-23, FR-26 | High | M | draft | - |
 
 ## Next up
 1. BL-002 - deploy for the demo (now unblocked; handled by teammate)
-2. BL-019 / BL-016 - next unblocked items for Max (parallel pre-generation / server-side option signing)
-3. BL-004 - story library (asked for by the team after the demo; blocked by BL-003)
-4. BL-013 - wording-independent offline safety check (Samy, after BL-009)
+2. BL-019 - optional parallel pre-generation of all story choice continuations (Max, `draft`)
+3. BL-016 - server-side signing of plan/options (next unblocked item for Max after `BL-019`)
+4. BL-004 - story library (asked for by the team after the demo; blocked by BL-003)
+5. BL-013 - wording-independent offline safety check (Samy, after BL-009)
 
 ## Known issues
 - KI-001 (BL-001): NVIDIA live AI path verified locally on localhost (BL-012); Anthropic Claude live path remains untested with a real key (only unit-tested with a fake client).
