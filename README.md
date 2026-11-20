@@ -22,6 +22,7 @@ Check everything before you share a change: `./scripts/verify.sh`
 - [Project status](project-status.md) and [backlog](backlog.md): where we are and what is next.
 - [Architecture](architecture.md): how it is built and why.
 - [Setup](docs/SETUP.md): keys and running on a new machine.
+- [Pitch one-pager](docs/pitch/README.md): the one-page pitch for the hackathon jury, with the basis for its numbers.
 
 ## Status
 
