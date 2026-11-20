@@ -14,7 +14,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAnthropicProvider, createApp, resolveProvider } from "../src/app.js";
 import { DEFAULT_NVIDIA_MODEL } from "../src/nvidia.js";
 import { loadDotEnv } from "../src/env.js";
 import { JUDGE_SYSTEM, codeChecks, judgeChecks, judgePrompt, parseJudge } from "./grade.js";
@@ -405,6 +404,8 @@ function writeEvidence(summary, label) {
 export async function main(argv, log = console.log, { fetchImpl } = {}) {
   const args = parseArgs(argv);
   if (!args.dryRun) loadDotEnv(path.join(root, ".env"));
+  // The app reads its settings when imported, so import it only after .env is loaded.
+  const { createAnthropicProvider, createApp, resolveProvider } = await import("../src/app.js");
   const cases = loadCases(args.only);
   const state = { case: null };
   const ledger = { calls: [], pending: new Set() };
