@@ -43,5 +43,7 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 ## Deploy
 
 ## Process
+- The template .gitignore line `evidence/` also hid `docs/evidence/`; it is now
+  `/evidence/`. Check `git status` shows every new doc before pushing. (2026-11-20)
 <!-- Lessons about the workflow itself, worth carrying into the next project. -->
 - The itero-skills plugins cannot be installed with /plugin in cloud sessions; the skills are synced to the account, so invoke them directly and read reference files from a read-only clone of the repo. (2026-11-20)
