@@ -25,10 +25,10 @@ Pull the latest `main`, then create separate branches and stay within your owned
 - Resolve open questions #2 (age range) and #8 (whether to keep parent notes) in `docs/REQUIREMENTS.md` Section 10 before starting `BL-004` (saved stories).
 
 ## BL-009 (Samy)
-PR #4 open, waiting on a decision (stuck rule): the offline safety check still has a
-High finding after its fix review. Built: offline check (44/44 test notes, 0/37 false
-alarms, 2/10 unseen), story scanner, prompt fencing, live eval (tested with a stand-in
-AI only). The paid live run waits for an Anthropic API key; nobody has one yet.
+PR #4 open for Samy's check (not merged). Offline check: 94/94 test notes caught,
+0/80 false alarms, 4/10 on unseen wordings. Story scanner, prompt fencing and the live
+eval are built; the eval is tested only with a stand-in AI. Next: the paid live run
+(needs an Anthropic key) and BL-012.
 
 ## Open decisions
 - All open questions in `docs/REQUIREMENTS.md` section 10 (name, age range, choice moments, launch markets, price, safety review, AI provider, keeping parent notes).
@@ -47,8 +47,8 @@ AI only). The paid live run waits for an Anthropic API key; nobody has one yet.
   (bare family words "dad hit mummy", "he'd", threats with "kill", neglect wordings) and
   19 new false alarms ("dad beat me at chess", "mum works at the hospital"). Each round
   finds a new family of wordings: a phrase list cannot reliably recognise meaning.
-  Decision needed from Samy: keep patching, or accept it as a best-effort net and
-  move to a design that does not depend on wording (BL-012).
+  Decided by Samy: one final patch (done: all 94 + 80 sentences pass), then stop
+  patching the list and do BL-012.
 - `npm start` does not read `.env` (no loader), so a key in `.env` is ignored and the
   app stays offline. Fix for BL-002: start with `node --env-file=.env` or load it in
   `src/server.js`. (Found in BL-009, 2026-11-20.)
