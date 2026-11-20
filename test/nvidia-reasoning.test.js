@@ -71,3 +71,47 @@ test("BL-021-T04 reasoning levels can be set in the environment, and wrong value
   assert.deepEqual(seen.map((b) => b.reasoning_effort), ["high", "medium"]);
   assert.throws(() => createNvidiaProvider({ apiKey: "nvapi-test", storyReasoning: "max" }), /NVIDIA_STORY_REASONING must be one of none, medium, high/);
 });
+
+test("BL-021-T05 reasoning without an opening <think>, or in the middle, never stays on screen", async () => {
+  // Some templates leave out "<think>": the reply starts with reasoning and only "</think>" shows.
+  const noOpen = createNvidiaProvider({
+    apiKey: "nvapi-test",
+    fetchImpl: async () => sseOf([{ content: "The child is 5 so keep" }, { content: " calm.</think>" }, { content: "\n\nPip ran" }, { content: " home." }]),
+  });
+  const events = await drain(noOpen.streamStory({ system: "s", user: "u" }));
+  // What the child ends up seeing: text after the last reset.
+  const lastReset = events.map((e) => e.type).lastIndexOf("reset");
+  assert.ok(lastReset !== -1, "already-shown reasoning is withdrawn with a reset");
+  assert.equal(events.slice(lastReset + 1).map((e) => e.text).join(""), "Pip ran home.");
+
+  const middle = createNvidiaProvider({
+    apiKey: "nvapi-test",
+    fetchImpl: async () => sseOf([{ content: "Pip ran.<thi" }, { content: "nk>secret plan" }, { content: "</think> Home." }]),
+  });
+  const mid = await drain(middle.streamStory({ system: "s", user: "u" }));
+  assert.ok(!mid.some((e) => e.type === "text" && e.text.includes("secret")), "text inside <think> is never sent");
+});
+
+test("BL-021-T06 at the end of a reply: unclosed reasoning is dropped, held-back text is sent", async () => {
+  const unclosed = createNvidiaProvider({ apiKey: "nvapi-test", fetchImpl: async () => sseOf([{ content: "Pip ran. <think>still thinking" }]) });
+  assert.equal((await drain(unclosed.streamStory({ system: "s", user: "u" }))).map((e) => e.text).join(""), "Pip ran. ");
+  const lt = createNvidiaProvider({ apiKey: "nvapi-test", fetchImpl: async () => sseOf([{ content: "Hugs <" }]) });
+  assert.equal((await drain(lt.streamStory({ system: "s", user: "u" }))).map((e) => e.text).join(""), "Hugs <");
+});
+
+test("BL-021-T07 plans: 202 pending and unfinished streams are errors; an SSE body without the header still works", async () => {
+  const pending = createNvidiaProvider({ apiKey: "nvapi-test", fetchImpl: async () => new Response("", { status: 202 }) });
+  await assert.rejects(pending.plan({ system: "s", user: "u" }), (e) => e.status === 202);
+
+  const cutOff = createNvidiaProvider({
+    apiKey: "nvapi-test",
+    fetchImpl: async () => new Response(new ReadableStream({ start(c) { c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"safe":' } }] })}\n\n`)); c.close(); } }), { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+  });
+  await assert.rejects(cutOff.plan({ system: "s", user: "u" }), (e) => e.status === 502);
+
+  const noHeader = createNvidiaProvider({
+    apiKey: "nvapi-test",
+    fetchImpl: async () => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"safe":true}' } }] })}\n\ndata: [DONE]\n\n`, { status: 200 }),
+  });
+  assert.deepEqual(await noHeader.plan({ system: "s", user: "u" }), { refused: false, text: '{"safe":true}' });
+});

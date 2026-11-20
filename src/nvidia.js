@@ -92,31 +92,58 @@ function checkReasoning(value, fallback, name) {
   return v;
 }
 
-// Removes a leading <think>...</think> block from streamed text, in case the API puts
-// the model's reasoning into the reply text instead of `reasoning_content`.
-function createThinkStripper() {
-  let state = "start"; // start -> (thinking ->) text
-  let pending = "";
-  return (chunk) => {
-    if (state === "text") return chunk;
-    pending += chunk;
-    if (state === "start") {
-      const trimmed = pending.trimStart();
-      if (trimmed.length < 7 && "<think>".startsWith(trimmed)) return "";
-      if (!trimmed.startsWith("<think>")) {
-        state = "text";
-        const out = pending;
-        pending = "";
-        return out;
+// Reasoning must never reach the child (BL-021). The API may return it in
+// `reasoning_content` (ignored) or inside the reply text as <think>...</think>, and some
+// model templates leave out the opening <think>, so only "</think>" shows. The filter
+// recomputes the visible text from the whole reply each time:
+// - everything up to the last "</think>" is reasoning;
+// - an unclosed "<think>" cuts the text from there;
+// - an ending that could still become a tag is held back until the next chunk.
+// If already-sent text turns out to be reasoning, it asks the caller to reset.
+const OPEN = "<think>";
+const CLOSE = "</think>";
+
+export function visibleText(raw, { final = false } = {}) {
+  let t = raw;
+  const close = t.lastIndexOf(CLOSE);
+  if (close !== -1) t = t.slice(close + CLOSE.length);
+  const open = t.indexOf(OPEN);
+  if (open !== -1) t = t.slice(0, open);
+  if (!final) {
+    for (const tag of [OPEN, CLOSE]) {
+      for (let k = Math.min(tag.length - 1, t.length); k > 0; k--) {
+        if (tag.startsWith(t.slice(-k))) {
+          t = t.slice(0, -k);
+          break;
+        }
       }
-      state = "thinking";
     }
-    const end = pending.indexOf("</think>");
-    if (end === -1) return "";
-    state = "text";
-    const out = pending.slice(end + "</think>".length).replace(/^\s+/, "");
-    pending = "";
-    return out;
+  }
+  return t.replace(/^\s+/, "");
+}
+
+function createReasoningFilter() {
+  let raw = "";
+  let sent = "";
+  const step = (final) => {
+    const visible = visibleText(raw, { final });
+    if (visible.startsWith(sent)) {
+      const add = visible.slice(sent.length);
+      sent = visible;
+      return add ? [{ type: "text", text: add }] : [];
+    }
+    // Text already shown was reasoning: start this part again with the clean text.
+    sent = visible;
+    return visible ? [{ type: "reset" }, { type: "text", text: visible }] : [{ type: "reset" }];
+  };
+  return {
+    push(chunk) {
+      raw += chunk;
+      return step(false);
+    },
+    flush() {
+      return step(true);
+    },
   };
 }
 
@@ -162,7 +189,7 @@ export function createNvidiaProvider({
       }),
       signal,
     });
-    if (!res.ok) {
+    if (!res.ok || res.status === 202) {
       const err = new Error(`NVIDIA API error: HTTP ${res.status}`);
       err.status = res.status;
       throw err;
@@ -173,20 +200,24 @@ export function createNvidiaProvider({
   const isEventStream = (res) => /text\/event-stream/i.test(res.headers?.get?.("content-type") || "");
 
   // Reads an SSE reply and yields { type: "text" } / { type: "refused" } events.
-  async function* readSse(res, timeout) {
+  async function* readSse(res, timeout, { requireFinish = false } = {}) {
     if (!res.body || typeof res.body.getReader !== "function") {
       throw new Error("NVIDIA API response has no readable stream");
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder("utf-8");
-    const strip = createThinkStripper();
+    const filter = createReasoningFilter();
     let buffer = "";
+    let finished = false;
 
     const parseLine = (rawLine) => {
       const line = rawLine.trim();
       if (!line || line.startsWith(":") || !line.startsWith("data:")) return { done: false };
       const payloadStr = line.slice(5).trim();
-      if (payloadStr === "[DONE]") return { done: true };
+      if (payloadStr === "[DONE]") {
+        finished = true;
+        return { done: true };
+      }
       let payload;
       try {
         payload = JSON.parse(payloadStr);
@@ -202,15 +233,15 @@ export function createNvidiaProvider({
       }
       const choice = payload?.choices?.[0];
       const delta = choice?.delta;
-      if (isRefusal(choice, delta)) return { done: true, event: { type: "refused" } };
+      if (isRefusal(choice, delta)) return { done: true, events: [{ type: "refused" }] };
       if (choice?.finish_reason === "length") {
         const err = new Error("NVIDIA response truncated (length)");
         err.status = 502;
         throw err;
       }
+      if (choice?.finish_reason) finished = true;
       if (typeof delta?.content === "string" && delta.content.length > 0) {
-        const text = strip(delta.content);
-        if (text) return { done: false, event: { type: "text", text } };
+        return { done: false, events: filter.push(delta.content) };
       }
       return { done: false };
     };
@@ -225,14 +256,24 @@ export function createNvidiaProvider({
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const parsed = parseLine(line);
-          if (parsed.event) yield parsed.event;
-          if (parsed.done) return;
+          if (parsed.events) yield* parsed.events;
+          if (parsed.done) {
+            if (!parsed.events?.some((e) => e.type === "refused")) yield* filter.flush();
+            return;
+          }
         }
       }
       buffer += decoder.decode();
       if (buffer.trim()) {
         const parsed = parseLine(buffer);
-        if (parsed.event) yield parsed.event;
+        if (parsed.events) yield* parsed.events;
+        if (parsed.events?.some((e) => e.type === "refused")) return;
+      }
+      yield* filter.flush();
+      if (!finished && requireFinish) {
+        const err = new Error("NVIDIA stream ended early");
+        err.status = 502;
+        throw err;
       }
     } finally {
       try {
@@ -250,26 +291,41 @@ export function createNvidiaProvider({
       const timeout = createTimeoutController(signal, timeoutMs);
       try {
         const res = await postChat({ system, user, temperature: 0.4, reasoning: planEffort, signal: timeout.signal });
-        if (isEventStream(res)) {
-          let text = "";
-          for await (const event of readSse(res, timeout)) {
-            if (event.type === "refused") return { refused: true, text: "" };
-            text += event.text;
+        let stream = isEventStream(res) ? res : null;
+        if (!stream) {
+          const rawBody = await res.text();
+          if (rawBody.trimStart().startsWith("data:")) {
+            // An SSE body sent without the event-stream header is still read as SSE.
+            stream = new Response(rawBody);
+          } else {
+            // Some servers ignore `stream` and answer with one JSON object.
+            let data;
+            try {
+              data = JSON.parse(rawBody);
+            } catch {
+              const err = new Error("NVIDIA API reply was neither JSON nor a stream");
+              err.status = 502;
+              throw err;
+            }
+            const choice = data?.choices?.[0];
+            const msg = choice?.message;
+            if (isRefusal(choice, msg)) return { refused: true, text: "" };
+            if (choice?.finish_reason === "length") {
+              const err = new Error("NVIDIA plan response truncated (length)");
+              err.status = 502;
+              throw err;
+            }
+            const raw = typeof msg?.content === "string" ? msg.content : "";
+            return { refused: false, text: visibleText(raw, { final: true }) };
           }
-          return { refused: false, text };
         }
-        // Some servers ignore `stream` and answer with one JSON object.
-        const data = await res.json();
-        const choice = data?.choices?.[0];
-        const msg = choice?.message;
-        if (isRefusal(choice, msg)) return { refused: true, text: "" };
-        if (choice?.finish_reason === "length") {
-          const err = new Error("NVIDIA plan response truncated (length)");
-          err.status = 502;
-          throw err;
+        let text = "";
+        for await (const event of readSse(stream, timeout, { requireFinish: true })) {
+          if (event.type === "refused") return { refused: true, text: "" };
+          if (event.type === "reset") text = "";
+          else text += event.text;
         }
-        const raw = typeof msg?.content === "string" ? msg.content : "";
-        return { refused: false, text: createThinkStripper()(raw) };
+        return { refused: false, text };
       } finally {
         timeout.cleanup();
       }
