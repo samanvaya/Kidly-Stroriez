@@ -61,4 +61,7 @@ coverage/
 .pytest_cache/
 test-results/
 playwright-report/
-evidence/
+/evidence/
+
+# Live eval output (may contain generated stories)
+eval/results/

@@ -22,12 +22,21 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 ## Build
 
 ## Testing
+- Keep a held-out set when tuning a phrase list or prompt: the safety regex scored
+  29/29 on the notes it was written against but 2/10 on fresh ones. (2026-11-20)
+- Run every eval harness against a "perfect answers" and a "useless answers" stand-in
+  before any paid run; it proves the grader can both pass and fail. (2026-11-20)
 - Take full-page screenshots at phone size and check `scrollWidth`; a hidden radio input
   without a positioned parent made the page scroll sideways. (2026-11-20)
 - Any CSS `display` rule on an element overrides the `hidden` attribute; keep the
   `[hidden] { display: none !important; }` rule. (2026-11-20)
 
 ## Review
+- Fixing false alarms in a safety filter can silently create misses: after every change
+  to `public/safety.js`, rerun the full worrying list and add each new miss to it. In a
+  child-safety check a miss is worse than a false alarm. (2026-11-20)
+- A reviewer with fresh eyes found 10 false alarms the author's own test list missed;
+  write the "must not flag" list from everyday sentences first, before the rules. (2026-11-20)
 - A fallback path must not skip a safety check: the offline story was shown whenever
   the live plan failed, including on worrying notes. Fall back only on a clear
   "offline" signal and run the safety check on every path. (2026-11-20)
@@ -36,5 +45,7 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 ## Deploy
 
 ## Process
+- The template .gitignore line `evidence/` also hid `docs/evidence/`; it is now
+  `/evidence/`. Check `git status` shows every new doc before pushing. (2026-11-20)
 <!-- Lessons about the workflow itself, worth carrying into the next project. -->
 - The itero-skills plugins cannot be installed with /plugin in cloud sessions; the skills are synced to the account, so invoke them directly and read reference files from a read-only clone of the repo. (2026-11-20)

@@ -75,8 +75,7 @@
   });
 
   // Used only when there is no AI: the offline story is about sharing a toy, so notes
-  // about something serious must not get it (SR-03).
-  const WORRYING = /\b(abus\w*|molest\w*|touched (him|her|me|them)|bleed\w*|blood|hospital|ambulance|police|unsafe|in danger|scared to go home|hurt (him|her|me|them) badly|(grown-?up|adult|teacher|parent|dad|mum|mom|uncle|aunt)\s+(hurt|hit|touched|kicked|slapped))\b/i;
+  // about something serious must not get it (SR-03). The check is in safety.js.
   const SAFETY_MESSAGE = "This sounds like something to talk through rather than turn into a story. Please talk to someone you trust, such as your doctor, a teacher or a local support service.";
 
   async function requestPlan(changeRequest) {
@@ -111,7 +110,9 @@
       if (changeRequest) return planError("Changing the plan needs the internet. The offline story stays the same.", changeRequest, previous);
       await sleep(600);
       const notes = Object.values(state.notes).join(" ");
-      plan = WORRYING.test(notes) ? { safe: false, message: SAFETY_MESSAGE } : window.FALLBACK.plan;
+      // Without the safety check there is no offline story (fail closed).
+      if (!window.KidlySafety) return planError("Something did not load. Please reload the page and try again.", changeRequest, previous);
+      plan = window.KidlySafety.isWorrying(notes) ? { safe: false, message: SAFETY_MESSAGE } : window.FALLBACK.plan;
     }
     state.offline = offline;
     setMode();
