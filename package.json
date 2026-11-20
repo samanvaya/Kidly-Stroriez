@@ -5,11 +5,11 @@
   "description": "Bedtime app that turns a child's day into a short interactive story.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "dev": "node --watch --watch-path=src --watch-path=.env src/server.js",
     "lint": "for f in src/*.js public/*.js test/*.js eval/*.js; do node --check \"$f\" || exit 1; done",
     "test": "node --test test/*.test.js",
     "eval": "node eval/run.js"

@@ -18,6 +18,9 @@ Copy the example file. Never commit the real one, it is git-ignored for a reason
 cp .env.example .env
 ```
 
+`npm start` reads `.env` automatically (Node 20.12 or newer). Variables already set in
+the environment, for example by a hosting service, win over the file.
+
 ### `NVIDIA_API_KEY` (or `ANTHROPIC_API_KEY`)
 - **What it is:** lets the server ask NVIDIA Nemotron Ultra (or Claude) to write plans and stories.
 - **Where to get an NVIDIA key:** build.nvidia.com > API Keys > Generate Key.

@@ -14,7 +14,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createApp } from "../src/app.js";
+import { loadDotEnv } from "../src/env.js";
 import { JUDGE_SYSTEM, codeChecks, judgeChecks, judgePrompt, parseJudge } from "./grade.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -349,9 +349,9 @@ function writeEvidence(summary, label) {
 // ---------- main ----------
 export async function main(argv, log = console.log) {
   const args = parseArgs(argv);
-  if (existsSync(path.join(root, ".env")) && typeof process.loadEnvFile === "function" && !args.dryRun) {
-    process.loadEnvFile(path.join(root, ".env"));
-  }
+  if (!args.dryRun) loadDotEnv(path.join(root, ".env"));
+  // The app reads its settings when imported, so import it only after .env is loaded.
+  const { createApp } = await import("../src/app.js");
   const model = process.env.CLAUDE_MODEL || "claude-opus-5-5";
   const judgeModel = process.env.EVAL_GRADER_MODEL || "claude-opus-5-5";
   const cases = loadCases(args.only);
