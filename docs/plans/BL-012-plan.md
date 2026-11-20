@@ -51,4 +51,4 @@ Adds ADR-006 in `architecture.md`: backend supports an OpenAI-compatible NVIDIA 
 - Public deployment (`BL-002`) and frontend UI changes (`public/`).
 
 ---
-Approved by user: [ ] on 2026-11-20
+Approved by user: [x] on 2026-11-20
