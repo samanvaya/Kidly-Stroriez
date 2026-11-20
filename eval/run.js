@@ -260,23 +260,36 @@ function recordingProvider(provider, model, ledger, state) {
     promise.then(() => ledger.pending.delete(promise), () => ledger.pending.delete(promise));
     return promise;
   };
-  const note = (caseId, system) =>
-    ledger.calls.push({ caseId, role: system === JUDGE_SYSTEM ? "judge" : "app", model, usage: {} });
+  // Every call is counted, also refused, failed or stopped ones (they may still use credits).
+  const note = (caseId, system, ok) =>
+    ledger.calls.push({ caseId, role: system === JUDGE_SYSTEM ? "judge" : "app", model, usage: {}, ok });
   return {
     label: provider.label,
     plan(args) {
       const caseId = state.case?.id;
-      return track(provider.plan(args).then((r) => (note(caseId, args.system), r)));
+      return track(provider.plan(args).then(
+        (r) => (note(caseId, args.system, !r.refused), r),
+        (err) => {
+          note(caseId, args.system, false);
+          throw err;
+        },
+      ));
     },
     async *streamStory(args) {
       const caseId = state.case?.id;
       let done;
       const finished = new Promise((r) => (done = r));
       track(finished);
+      let ok = false;
+      let refused = false;
       try {
-        yield* provider.streamStory(args);
-        note(caseId, args.system);
+        for await (const event of provider.streamStory(args)) {
+          if (event.type === "refused") refused = true;
+          yield event;
+        }
+        ok = !refused;
       } finally {
+        note(caseId, args.system, ok);
         done();
       }
     },
@@ -359,7 +372,7 @@ export function summarise(rows, errors, meta) {
   lines.push("");
   lines.push(`Models that served calls: ${served.join(", ") || "none"}`);
   if (meta.priced === false) {
-    lines.push(`Calls made: ${meta.callCount} (provider credits; no published price, cost not computed)`);
+    lines.push(`Calls made: ${meta.callCount}${meta.failedCalls ? ` (${meta.failedCalls} refused, failed or stopped)` : ""} (provider credits; no published price, cost not computed)`);
     lines.push("Note: the same model wrote and graded the stories, so judge scores may be lenient.");
   } else {
     lines.push(`Cost from recorded tokens: $${meta.cost.toFixed(3)}${meta.unpriced ? " (some calls had no known price)" : ""}`);
@@ -425,10 +438,16 @@ export async function main(argv, log = console.log, { fetchImpl } = {}) {
   } else {
     const resolved = resolveProvider(process.env, { fetchImpl });
     if (!resolved.provider) {
-      log("No AI key is set. Put NVIDIA_API_KEY (or ANTHROPIC_API_KEY) in .env. Nothing was sent.");
+      const wanted = (process.env.AI_PROVIDER || "").trim().toLowerCase();
+      const keyFor = { nvidia: "NVIDIA_API_KEY", anthropic: "ANTHROPIC_API_KEY" }[wanted];
+      log(keyFor
+        ? `AI_PROVIDER=${wanted} needs ${keyFor} (in .env or the environment). Nothing was sent.`
+        : "No AI key is set. Put NVIDIA_API_KEY (or ANTHROPIC_API_KEY) in .env. Nothing was sent.");
       return 1;
     }
-    if (resolved.label === "live (Claude)") {
+    // Claude is recognised by the provider's own label, not by a copy of its text.
+    const claudeLabel = createAnthropicProvider(null).label;
+    if (resolved.label === claudeLabel) {
       providerName = "Claude";
       model = process.env.CLAUDE_MODEL || "claude-opus-5-5";
       judgeModel = process.env.EVAL_GRADER_MODEL || "claude-opus-5-5";
@@ -483,7 +502,7 @@ export async function main(argv, log = console.log, { fetchImpl } = {}) {
     for (let rep = 1; rep <= args.reps && !stoppedForBudget; rep++) {
       for (const c of cases) {
         // Calls still running are counted at a cautious $0.10 each.
-        if (cost(ledger.calls).usd + 0.1 * ledger.pending.size >= args.maxUsd) {
+        if (priced && cost(ledger.calls).usd + 0.1 * ledger.pending.size >= args.maxUsd) {
           stoppedForBudget = true;
           log(`Stopped: the spending limit of $${args.maxUsd.toFixed(2)} was reached.`);
           break;
@@ -539,7 +558,7 @@ export async function main(argv, log = console.log, { fetchImpl } = {}) {
   }
 
   const spent = cost(ledger.calls);
-  const summary = (stoppedForBudget ? `STOPPED EARLY: spending limit $${args.maxUsd} reached.\n` : "") + summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : `${providerName} ${model}`, judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced, priced, callCount: ledger.calls.length });
+  const summary = (stoppedForBudget ? `STOPPED EARLY: spending limit $${args.maxUsd} reached.\n` : "") + summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : `${providerName} ${model}`, judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced, priced, callCount: ledger.calls.length, failedCalls: ledger.calls.filter((c) => c.ok === false).length });
   writeFileSync(path.join(outDir, "summary.md"), summary + "\n");
   if (args.writeEvidence) writeEvidence(summary, args.label);
   log("");

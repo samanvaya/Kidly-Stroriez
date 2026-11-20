@@ -190,3 +190,34 @@ test("BL-018-T02 on NVIDIA, a run without --yes shows the call count and sends n
   assert.match(text, /About 85 calls on NVIDIA Nemotron credits; no price is published, so --max-usd does not apply\./);
   assert.match(text, /Nothing was sent\./);
 });
+
+test("BL-018-T03 refused and failed calls are still counted, and a missing key names the provider", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "kidly-eval-nv-"));
+  const calls = [];
+  const base = fakeNvidia(calls);
+  // The second story part is refused by the model (content filter).
+  const refusing = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.stream && body.messages[1].content.includes("part 2 of 3")) {
+      calls.push({ refused: true });
+      const stream = new ReadableStream({ start(c) { c.enqueue(enc.encode('data: {"choices":[{"delta":{},"finish_reason":"content_filter"}]}\n\n')); c.close(); } });
+      return new Response(stream, { status: 200 });
+    }
+    return base(url, init);
+  };
+  await withEnv({ AI_PROVIDER: "nvidia", NVIDIA_API_KEY: "test-placeholder" }, async () => {
+    const code = await main(["--yes", "--only=ordinary-toy-car", `--out=${dir}`], () => {}, { fetchImpl: refusing });
+    assert.equal(code, 2, "a refused case is not fully scored");
+  });
+  // plan + part 1 + refused part 2 = 3 calls made, 1 of them refused.
+  assert.equal(calls.length, 3);
+  const summary = readFileSync(path.join(dir, "summary.md"), "utf8");
+  assert.match(summary, /Calls made: 3 \(1 refused, failed or stopped\)/);
+  assert.match(summary, /refusals: 1/);
+
+  await withEnv({ AI_PROVIDER: "nvidia", ANTHROPIC_API_KEY: "test-placeholder" }, async () => {
+    const out = [];
+    assert.equal(await main(["--yes"], (l) => out.push(l)), 1);
+    assert.match(out.join("\n"), /AI_PROVIDER=nvidia needs NVIDIA_API_KEY/);
+  });
+});
