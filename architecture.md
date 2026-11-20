@@ -43,7 +43,8 @@ Two layers, both in the repo:
   `test/safety-cases.js`; `storyIssues` in `src/parse.js` finds banned labels and
   copied names.
 - **Paid live eval, opt-in (`npm run eval`):** `eval/run.js` starts the real app
-  (`createApp`) with a recording wrapper around the Anthropic client, plays the 21
+  (`createApp`) with the same AI provider the app would use (`resolveProvider`: NVIDIA
+  or Claude, BL-018) wrapped to record every call, plays the 21
   invented days in `eval/cases.json` through `/api/plan` and `/api/story`, and grades
   them with code checks (`eval/grade.js`) and a Claude judge (`eval/rubric.md`).
   Without `--yes` it only prints the estimated cost. `--dry-run` uses a stand-in AI
