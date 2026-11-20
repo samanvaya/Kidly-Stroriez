@@ -45,6 +45,40 @@ function isRefusal(choice, msgOrDelta) {
   );
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function normalizeBaseUrl(rawUrl) {
+  const candidate = (typeof rawUrl === "string" && rawUrl.trim()) || DEFAULT_NVIDIA_BASE_URL;
+  const parsed = new URL(candidate);
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error("NVIDIA_BASE_URL must not contain credentials, query strings, or fragments");
+  }
+  const isHttps = parsed.protocol === "https:";
+  const isLoopbackHttp = parsed.protocol === "http:" && LOOPBACK_HOSTS.has(parsed.hostname);
+  if (!isHttps && !isLoopbackHttp) {
+    throw new Error("NVIDIA_BASE_URL must use https:// (or http:// for localhost only)");
+  }
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function readWithAbort(reader, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason || new Error("Aborted"));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason || new Error("Aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    reader.read().then(
+      (res) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(res);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      }
+    );
+  });
+}
+
 export function createNvidiaProvider({
   apiKey,
   model,
@@ -56,15 +90,13 @@ export function createNvidiaProvider({
   if (!key) throw new Error("NVIDIA API key is required");
 
   const resolvedModel = (typeof model === "string" && model.trim()) || DEFAULT_NVIDIA_MODEL;
-  const resolvedBaseUrl = ((typeof baseUrl === "string" && baseUrl.trim()) || DEFAULT_NVIDIA_BASE_URL).replace(
-    /\/+$/,
-    ""
-  );
+  const resolvedBaseUrl = normalizeBaseUrl(baseUrl);
   const endpoint = `${resolvedBaseUrl}/chat/completions`;
 
   async function postChat({ system, user, stream, temperature, signal }) {
     const res = await fetchImpl(endpoint, {
       method: "POST",
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
@@ -156,7 +188,7 @@ export function createNvidiaProvider({
         };
 
         while (true) {
-          const { value, done } = await reader.read();
+          const { value, done } = await readWithAbort(reader, timeout.signal);
           if (done) break;
           timeout.resetTimer();
           buffer += typeof value === "string" ? value : decoder.decode(value, { stream: true });

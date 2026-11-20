@@ -208,6 +208,7 @@ test("BL-012-T01 /api/plan uses NVIDIA provider with Bearer auth and default mod
     assert.equal(body.theme, "Sharing");
     assert.equal(body.sig, signPlan(plan, notes));
     assert.equal(seen[0].url, "https://integrate.api.nvidia.com/v1/chat/completions");
+    assert.equal(seen[0].init.redirect, "error");
     assert.equal(seen[0].init.headers.Authorization, "Bearer nvapi-test-key");
     assert.equal(seen[0].body.model, DEFAULT_NVIDIA_MODEL);
     assert.ok(!JSON.stringify(seen[0].body).includes("Mia"));
@@ -251,9 +252,19 @@ test("BL-012-T03 NVIDIA provider maps HTTP errors, length truncation, and conten
     assert.equal((await post(base, "/api/plan", notes)).status, 502);
   });
 
+  const storyLengthProvider = createNvidiaProvider({
+    apiKey: "nvapi-test-key",
+    fetchImpl: fakeSseFetch(['data: {"choices":[{"finish_reason":"length","delta":{}}]}\n\n']),
+  });
+  await withServer(createApp({ provider: storyLengthProvider }), async (base) => {
+    const res = await post(base, "/api/story", { ...notes, plan, approved: true, sig, partIndex: 0, history: [] });
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l));
+    assert.deepEqual(lines.at(-1), { type: "error", error: "unavailable" });
+  });
+
   const planRefused = createNvidiaProvider({
     apiKey: "nvapi-test-key",
-    fetchImpl: fakeJsonFetch({ choices: [{ finish_reason: "content_filter", message: { content: null } }] }),
+    fetchImpl: fakeJsonFetch({ choices: [{ finish_reason: "stop", message: { content: null, refusal: "unsafe" } }] }),
   });
   await withServer(createApp({ provider: planRefused }), async (base) => {
     const res = await post(base, "/api/plan", notes);
@@ -276,7 +287,7 @@ test("BL-012-T03 NVIDIA provider maps HTTP errors, length truncation, and conten
   });
 });
 
-test("BL-012-T04 resolveProvider and createApp respect AI_PROVIDER, blank strings, base URL slash, and client: null", async () => {
+test("BL-012-T04 resolveProvider and createApp respect AI_PROVIDER, blank strings, base URL validation, and client: null", async () => {
   const urls = [];
   const fetchImpl = (url, init) => {
     urls.push(url);
@@ -289,6 +300,10 @@ test("BL-012-T04 resolveProvider and createApp respect AI_PROVIDER, blank string
   assert.equal(nvidiaAuto.label, "live (NVIDIA Nemotron)");
   await nvidiaAuto.provider.plan({ system: "s", user: "u" });
   assert.equal(urls[0], "https://nim.test/v1/chat/completions");
+
+  assert.throws(() => createNvidiaProvider({ apiKey: "nvapi-1", baseUrl: "http://nim.example.com/v1" }), /https/);
+  assert.throws(() => createNvidiaProvider({ apiKey: "nvapi-1", baseUrl: "https://user:pass@nim.example.com/v1" }), /credentials/);
+  assert.doesNotThrow(() => createNvidiaProvider({ apiKey: "nvapi-1", baseUrl: "http://127.0.0.1:8080/v1" }));
 
   assert.equal(resolveProvider({ AI_PROVIDER: "anthropic", NVIDIA_API_KEY: "nvapi-1", ANTHROPIC_API_KEY: "sk-1" }).label, "live (Claude)");
   assert.equal(resolveProvider({ AI_PROVIDER: "nvidia", ANTHROPIC_API_KEY: "sk-1" }).provider, null);
@@ -339,5 +354,23 @@ test("BL-012-T05 client disconnect aborts upstream fetch and idle timeout aborts
   await withServer(createApp({ provider: stalledProvider }), async (base) => {
     const res = await post(base, "/api/plan", notes);
     assert.equal(res.status, 502);
+  });
+
+  const stalledStreamProvider = createNvidiaProvider({
+    apiKey: "nvapi-test-key",
+    timeoutMs: 30,
+    fetchImpl: async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Once"}}]}\n\n'));
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    },
+  });
+  await withServer(createApp({ provider: stalledStreamProvider }), async (base) => {
+    const res = await post(base, "/api/story", { ...notes, plan, approved: true, sig, partIndex: 0, history: [] });
+    const lines = (await res.text()).trim().split("\n").map((l) => JSON.parse(l));
+    assert.deepEqual(lines.at(-1), { type: "error", error: "unavailable" });
   });
 });

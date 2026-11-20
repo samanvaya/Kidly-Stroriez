@@ -284,7 +284,8 @@ export function createApp({ client, provider, env = process.env, limit } = {}) {
           break;
         }
       }
-      if (watcher.isClosed() || refused) return res.end();
+      if (watcher.isClosed()) return;
+      if (refused) return res.end();
       const rest = splitter.flush();
       if (rest) send({ type: "text", text: rest });
       const tail = parsePartTail(splitter.tail, isLast);
@@ -292,8 +293,9 @@ export function createApp({ client, provider, env = process.env, limit } = {}) {
       else if (tail.options.length >= 2) send({ type: "options", options: tail.options });
       else send({ type: "error", error: "no-options" });
     } catch (err) {
+      if (watcher.isClosed()) return;
       console.error("story failed:", err?.status ?? "", err?.message);
-      if (!watcher.isClosed()) send({ type: "error", error: "unavailable" });
+      send({ type: "error", error: "unavailable" });
     } finally {
       watcher.cleanup();
     }

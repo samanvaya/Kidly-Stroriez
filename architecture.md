@@ -31,7 +31,7 @@ test/            unit and API tests (fake Claude client & mocked NVIDIA fetch)
    Any other failure shows an error with "Try again", never the offline story.
 5. The server signs each plan it writes (HMAC over plan + notes); `/api/story` only
    accepts a plan with a valid signature, so the approval step cannot be skipped.
-6. Per-visitor rate limit (in memory) and `max_tokens` 4000 cap the cost of a public URL.
+6. Per-visitor rate limit (in memory) and `max_tokens` (`4000` Anthropic / `8192` NVIDIA) cap the cost of a public URL.
 7. If a server-side safety fallback switches models mid-part, the server sends `reset`
    and the client clears that part before the new text arrives.
 
