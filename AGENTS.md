@@ -17,3 +17,5 @@ in `architecture.md`, run rules in `docs/run-protocol.md`, lessons per phase in
 - This is a children's app: no real names, no child audio, and nothing shown to the
   child that the parent has not approved at plan level (SR-01, SR-05, NFR-03).
 - AI keys and prompts stay on the backend, never in client code (NFR-06).
+- Never accept an API key pasted into chat: say it must be revoked, and point to `.env`
+  or the host's secret settings instead (incident 2026-11-20).

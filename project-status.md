@@ -28,7 +28,10 @@ Pull the latest `main`, then create separate branches and stay within your owned
 - All open questions in `docs/REQUIREMENTS.md` section 10 (name, age range, choice moments, launch markets, price, safety review, AI provider, keeping parent notes).
 
 ## Security incidents
-- None recorded.
+- 2026-11-20: an NVIDIA API key was pasted into the chat of a Claude Code session
+  (BL-009 kickoff). Not used, not stored, not committed. Open: the owner revokes it at
+  build.nvidia.com and creates a new one; keys go only into `.env` or the host's
+  secret settings.
 
 ## Gotchas
 - Anthropic keys cannot be stored as cloud-session secrets, so the live path could not be tested in the build session. Test it on the deployed app.
