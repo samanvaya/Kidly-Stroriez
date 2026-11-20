@@ -100,31 +100,36 @@ function checkReasoning(value, fallback, name) {
 // - an unclosed "<think>" cuts the text from there;
 // - an ending that could still become a tag is held back until the next chunk.
 // If already-sent text turns out to be reasoning, it asks the caller to reset.
-const OPEN = "<think>";
-const CLOSE = "</think>";
+const OPEN_RE = /<\s*think\s*>/i;
+const CLOSE_RE = /<\s*\/\s*think\s*>/i;
+const PAIR_RE = /<\s*think\s*>[\s\S]*?<\s*\/\s*think\s*>/gi;
+// An ending that could still grow into <think> or </think> ("<", "</th", "<THI ").
+const PARTIAL_TAG_RE = /<\s*\/?\s*(?:t(?:h(?:i(?:n(?:k\s*)?)?)?)?)?$/i;
 
 export function visibleText(raw, { final = false } = {}) {
   let t = raw;
-  const close = t.lastIndexOf(CLOSE);
-  if (close !== -1) t = t.slice(close + CLOSE.length);
-  const open = t.indexOf(OPEN);
-  if (open !== -1) t = t.slice(0, open);
-  if (!final) {
-    for (const tag of [OPEN, CLOSE]) {
-      for (let k = Math.min(tag.length - 1, t.length); k > 0; k--) {
-        if (tag.startsWith(t.slice(-k))) {
-          t = t.slice(0, -k);
-          break;
-        }
-      }
+  for (let guard = 0; guard < 50; guard++) {
+    const close = t.search(CLOSE_RE);
+    const open = t.search(OPEN_RE);
+    if (close !== -1 && (open === -1 || close < open)) {
+      // "</think>" with no "<think>" before it: everything before it is reasoning.
+      t = t.slice(close).replace(CLOSE_RE, "");
+      continue;
     }
+    const before = t;
+    t = t.replace(PAIR_RE, ""); // whole <think>...</think> blocks
+    if (t === before) break;
   }
+  const open = t.search(OPEN_RE);
+  if (open !== -1) t = t.slice(0, open); // unclosed: reasoning until the end
+  if (!final) t = t.replace(PARTIAL_TAG_RE, "");
   return t.replace(/^\s+/, "");
 }
 
 function createReasoningFilter() {
   let raw = "";
   let sent = "";
+  let sawAngle = false;
   const step = (final) => {
     const visible = visibleText(raw, { final });
     if (visible.startsWith(sent)) {
@@ -139,6 +144,14 @@ function createReasoningFilter() {
   return {
     push(chunk) {
       raw += chunk;
+      if (!sawAngle && !chunk.includes("<")) {
+        // Fast path: no tag has appeared yet, so the text is shown as it comes.
+        const visible = raw.replace(/^\s+/, "");
+        const add = visible.slice(sent.length);
+        sent = visible;
+        return add ? [{ type: "text", text: add }] : [];
+      }
+      sawAngle = true;
       return step(false);
     },
     flush() {

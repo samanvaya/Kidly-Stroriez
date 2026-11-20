@@ -115,3 +115,22 @@ test("BL-021-T07 plans: 202 pending and unfinished streams are errors; an SSE bo
   });
   assert.deepEqual(await noHeader.plan({ system: "s", user: "u" }), { refused: false, text: '{"safe":true}' });
 });
+
+test("BL-021-T08 reasoning tags in any case or spacing are removed, and story text around them is kept", async () => {
+  const { visibleText } = await import("../src/nvidia.js");
+  assert.equal(visibleText("<THINK>plan</THINK>Pip ran.", { final: true }), "Pip ran.");
+  assert.equal(visibleText("< think >plan</ think >Pip ran.", { final: true }), "Pip ran.");
+  assert.equal(visibleText("Once upon a time<think>x</think> the cat slept.", { final: true }), "Once upon a time the cat slept.");
+  assert.equal(visibleText("A<think>1</think>B<think>2</think>C", { final: true }), "ABC");
+  assert.equal(visibleText("<think>a<think>b</think> c</think>Pip", { final: true }), "Pip");
+  assert.equal(visibleText("Pip ran <TH"), "Pip ran ", "a partial tag is held back while streaming");
+  assert.equal(visibleText("Pip ran <3"), "Pip ran <3");
+
+  // Streamed one character at a time, the child never sees the reasoning.
+  const reply = "Pip <Think>do not show this</Think>ran home.";
+  const p = createNvidiaProvider({ apiKey: "nvapi-test", fetchImpl: async () => sseOf([...reply].map((ch) => ({ content: ch }))) });
+  const events = await drain(p.streamStory({ system: "s", user: "u" }));
+  assert.ok(!events.some((e) => e.type === "text" && /show|this/.test(e.text)));
+  const lastReset = events.map((e) => e.type).lastIndexOf("reset");
+  assert.equal(events.slice(lastReset + 1).map((e) => e.text).join(""), "Pip ran home.");
+});
