@@ -10,6 +10,7 @@
     notes: { happened: "", felt: "", did: "" },
     plan: null,
     parts: [], // { text, options, chosen }
+    speak: false,
     busy: false,
     controller: null,
     run: 0, // bumped on "New story" so an offline story stops typing
@@ -17,6 +18,7 @@
 
   // ---------- helpers ----------
   function show(screenId) {
+    tts.stop();
     document.querySelectorAll(".screen").forEach((s) => { s.hidden = s.id !== screenId; });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -33,6 +35,28 @@
     el.classList.toggle("live", !offline);
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const tts = {
+    supported: "speechSynthesis" in window,
+    say(text) {
+      if (!this.supported || !state.speak || !text.trim()) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text.trim());
+      u.rate = 0.9;
+      u.pitch = 1.05;
+      speechSynthesis.speak(u);
+    },
+    stop() { if (this.supported) speechSynthesis.cancel(); },
+  };
+
+  function updateSpeakBtn() {
+    const btn = $("speak-btn");
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", String(state.speak));
+    btn.setAttribute("aria-label", state.speak ? "Read aloud: on" : "Read aloud: off");
+    btn.textContent = state.speak ? "🔊 Reading aloud" : "🔇 Read aloud";
+    btn.classList.toggle("speak-on", state.speak);
+  }
 
   // ---------- 1. start ----------
   fetch("/api/config")
@@ -238,7 +262,17 @@
     updateBackButton();
   });
 
+  $("speak-btn").addEventListener("click", () => {
+    state.speak = !state.speak;
+    updateSpeakBtn();
+    if (!state.speak) tts.stop();
+  });
+  if (!tts.supported) $("speak-btn").hidden = true;
+
   $("restart").addEventListener("click", () => {
+    tts.stop();
+    state.speak = false;
+    updateSpeakBtn();
     state.controller?.abort();
     state.run += 1;
     $("day-form").reset();
@@ -290,6 +324,7 @@
       }));
       $("ending").hidden = false;
     }
+    tts.say(part.text);
   }
 
   async function livePart(index, part) {
