@@ -110,6 +110,8 @@
       if (changeRequest) return planError("Changing the plan needs the internet. The offline story stays the same.", changeRequest, previous);
       await sleep(600);
       const notes = Object.values(state.notes).join(" ");
+      // Without the safety check there is no offline story (fail closed).
+      if (!window.KidlySafety) return planError("Something did not load. Please reload the page and try again.", changeRequest, previous);
       plan = window.KidlySafety.isWorrying(notes) ? { safe: false, message: SAFETY_MESSAGE } : window.FALLBACK.plan;
     }
     state.offline = offline;

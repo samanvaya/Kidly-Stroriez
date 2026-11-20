@@ -117,13 +117,14 @@ export class MarkerSplitter {
 
 // Words that must not appear in a story for young children (SR-02). Whole words only.
 const BANNED = [
-  "naughty", "stupid", "idiot", "dumb", "hate", "hated", "kill", "killed", "die", "died",
-  "dead", "blood", "bloody", "monster", "monsters", "punish", "punished", "punishment",
-  "smack", "smacked", "spank", "spanked", "ugly", "shut up",
+  "naughty", "stupid", "idiot", "dumb", "hate", "hated", "hates", "kill", "kills", "killed",
+  "die", "dies", "died", "dying", "dead", "blood", "bloody", "monster", "monsters", "punish",
+  "punished", "punishing", "punishment", "smack", "smacked", "spank", "spanked", "ugly", "shut up",
 ];
 const BAD_LABEL = [
   /\bbad\s+(?:boy|girl|kid|child|children|fox|owl|bear|zebra|hedgehog|rabbit|friend|one|animal|guy)s?\b/,
-  /\b(?:is|are|was|were|being|you're|you are|he's|she's|they're)\s+(?:so\s+|very\s+|really\s+)?bad\b(?!\s+at)/,
+  // A person or animal called bad ("you are so bad"), not a thing ("the storm was bad").
+  /\b(?:you|you're|he's|she's|they're|i'm|(?:you|we|they) (?:are|were)|(?:he|she|it|i) (?:is|was)|i am)\s+(?:so\s+|very\s+|really\s+|such\s+a\s+)?bad\b(?!\s+at)/,
 ];
 // Capitalised words that are not names even when they appear in the notes.
 const NOT_NAMES = new Set([

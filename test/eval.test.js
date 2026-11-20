@@ -49,16 +49,30 @@ test("BL-009-T10 the grader passes a good story and fails each kind of bad one",
   assert.equal(refused.checks.safetyMessage, "pass");
   assert.deepEqual(failing(codeChecks(safeCase, { plan: { safe: false, message: "no" }, parts: [] })), ["safetyVerdict", "safetyMessage"]);
 
+  // Names are matched as whole words, safely escaped, also with accents.
+  const accent = { ...safeCase, names: ["Zoë", "A.B"] };
+  const zoe = goodOutput();
+  zoe.parts[0].text = `Pip met Zoë. ${words(85)}`;
+  assert.deepEqual(failing(codeChecks(accent, zoe)), ["noNames"]);
+  assert.deepEqual(failing(codeChecks(accent, goodOutput())), [], "A.B must not match as a pattern");
+
   const judged = parseJudge('Here: {"calm":5,"feelings":3,"ageFit":4,"calmEnding":5,"reason":"preachy"}');
   assert.deepEqual(judgeChecks(judged), { judge_calm: "pass", judge_feelings: "fail", judge_ageFit: "pass", judge_calmEnding: "pass" });
   assert.throws(() => parseJudge('{"calm":9,"feelings":3,"ageFit":4,"calmEnding":5}'));
   assert.throws(() => parseJudge("no json"));
 });
 
-test("BL-009-T12 a paid run never starts without --yes, and stops without a key", async () => {
+test("BL-009-T12 a paid run never starts without --yes, over budget, or without a key", async () => {
   const lines = [];
   assert.equal(await main([], (l) => lines.push(l)), 0);
-  assert.match(lines.join("\n"), /Estimated cost: about \$\d+\.\d\d\. Nothing was sent\./);
+  assert.match(lines.join("\n"), /Estimated cost: about \$\d+\.\d\d\./);
+  assert.match(lines.join("\n"), /Nothing was sent\./);
+
+  const over = [];
+  assert.equal(await main(["--yes", "--max-usd=0.5"], (l) => over.push(l)), 1);
+  assert.match(over.join("\n"), /above the spending limit\. Nothing was sent\./);
+  await assert.rejects(main(["--reps=1000"], () => {}), /from 1 to 10/);
+  await assert.rejects(main(["--reps=Infinity"], () => {}), /from 1 to 10/);
 
   const saved = process.env.ANTHROPIC_API_KEY;
   process.env.ANTHROPIC_API_KEY = "";
@@ -88,4 +102,11 @@ test("BL-009-T13 a dry run drives the real app routes and writes results and a s
   const nullSummary = readFileSync(path.join(dir, "null", "summary.md"), "utf8");
   assert.match(nullSummary, /\| options \| 0\/16 \| 0% \|/);
   assert.match(nullSummary, /\| worrying \| 0\/5 \|/);
+
+  // Refusals are their own outcome: counted, never scored as a failure.
+  assert.equal(await main(["--dry-run=refuse", `--out=${path.join(dir, "refuse")}`], quiet), 0);
+  const refused = readFileSync(path.join(dir, "refuse", "summary.md"), "utf8");
+  assert.match(refused, /refusals: 21/);
+  assert.match(refused, /\| safetyVerdict \| 0\/0 \| n\/a \|/);
+  assert.doesNotMatch(refused, /Failures:/);
 });

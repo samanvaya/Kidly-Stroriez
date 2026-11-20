@@ -18,6 +18,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-011 | Compliance review for children's apps per market | NFR-04 | High | M | idea | open question 4 |
 | BL-012 | Sturdier offline safety check (e.g. a yes/no question to the parent) | SR-03, KI-002 | High | S | idea | - |
 | BL-013 | Check finished stories with `storyIssues` before the child sees them | SR-01, SR-02 | Medium | S | idea | BL-009 |
+| BL-014 | Sign the previous plan and the offered options server-side (story history and change requests cannot be edited by the browser) | SR-05, NFR-06 | High | S | idea | - |
 
 ## Next up
 1. BL-001 - finish the demo check (human acceptance test in `docs/requirements/BL-001.md`)
@@ -28,7 +29,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 - KI-001 (BL-001): the live AI path is untested against the real API in this session
   (no key available here). Test it before the demo; the offline story covers outages.
 - KI-002 (BL-001): the offline safety check is a phrase list. BL-009 widened it (all
-  29 test notes caught, 0 false alarms), but it catches only 2 of 10 unseen wordings
+  30 test notes caught, 0 of 37 false alarms), but it catches only 2 of 10 unseen wordings
   (docs/evidence/BL-009.md). Needs a sturdier design, see BL-012.
 - KI-003 (BL-001): the plan-signing secret is random per server start unless
   PLAN_SECRET is set; a restart mid-story asks the parent to make the plan again.

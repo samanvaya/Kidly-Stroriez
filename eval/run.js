@@ -5,7 +5,9 @@
 //   npm run eval -- --yes                 run against the real Claude API (costs money)
 //   npm run eval -- --dry-run             run the real app routes with a stand-in AI
 //   npm run eval -- --dry-run=null        stand-in that gives useless answers (must fail)
-//   options: --reps N  --only id,id  --label before|after  --write-evidence  --out DIR
+//   npm run eval -- --dry-run=refuse      stand-in that refuses (counted, never scored)
+//   options: --reps=N (1-10)  --max-usd=N (default 10)  --only=id,id  --label=before|after
+//            --write-evidence  --out=DIR
 //
 // The eval drives the real app (createApp) over HTTP, so it tests exactly the prompts,
 // parsing and safety rules that ship. See docs/requirements/BL-009.md.
@@ -27,14 +29,26 @@ export const PRICES = {
 // Rough tokens per case, for the estimate shown before a paid run.
 const EST = { safe: { in: 8000, out: 4000 }, unsafe: { in: 2000, out: 1000 }, judge: { in: 3000, out: 1000 } };
 const CASE_TIMEOUT_MS = 180_000;
+const MAX_REPS = 10;
+// The app answers a refused plan with this message (src/app.js); it is a refusal, not
+// the model's own safety verdict.
+const PLAN_REFUSAL = "We could not make a story from these notes";
 
 export function parseArgs(argv) {
-  const a = { yes: false, dryRun: null, reps: 1, only: null, label: null, writeEvidence: false, out: null };
+  const a = { yes: false, dryRun: null, reps: 1, maxUsd: 10, only: null, label: null, writeEvidence: false, out: null };
   for (const arg of argv) {
     if (arg === "--yes") a.yes = true;
     else if (arg === "--dry-run") a.dryRun = "oracle";
     else if (arg.startsWith("--dry-run=")) a.dryRun = arg.split("=")[1];
-    else if (arg.startsWith("--reps=")) a.reps = Math.max(1, Number(arg.split("=")[1]) || 1);
+    else if (arg.startsWith("--reps=")) {
+      const n = Number(arg.split("=")[1]);
+      if (!Number.isInteger(n) || n < 1 || n > MAX_REPS) throw new Error(`--reps must be a whole number from 1 to ${MAX_REPS}`);
+      a.reps = n;
+    } else if (arg.startsWith("--max-usd=")) {
+      const n = Number(arg.split("=")[1]);
+      if (!Number.isFinite(n) || n <= 0) throw new Error("--max-usd must be a positive number");
+      a.maxUsd = n;
+    }
     else if (arg.startsWith("--only=")) a.only = arg.split("=")[1].split(",");
     else if (arg.startsWith("--label=")) a.label = arg.split("=")[1];
     else if (arg === "--write-evidence") a.writeEvidence = true;
@@ -66,28 +80,35 @@ export function estimate(cases, reps, appModel, judgeModel) {
   return usd * reps;
 }
 
-// Wraps a client so every call's served model and token usage land in `bucket.calls`.
-function recording(inner, bucket) {
-  const note = (role, message) => {
-    if (!message) return;
-    bucket.calls.push({ role, model: message.model, usage: message.usage || {} });
+// Wraps a client so every call's served model and token usage land in `ledger.calls`,
+// tagged with the case that started it. A call still running when its case times out
+// is billed anyway, so `ledger.pending` lets the run wait for it before adding up cost.
+function recording(inner, ledger, state) {
+  const note = (caseId, role, message) => {
+    if (message) ledger.calls.push({ caseId, role, model: message.model, usage: message.usage || {} });
+  };
+  const track = (promise) => {
+    ledger.pending.add(promise);
+    promise.then(() => ledger.pending.delete(promise), () => ledger.pending.delete(promise));
+    return promise;
   };
   return {
     beta: {
       messages: {
-        async create(params, opts) {
-          const m = await inner.beta.messages.create(params, opts);
-          note(params.system === JUDGE_SYSTEM ? "judge" : "app", m);
-          return m;
+        create(params, opts) {
+          const caseId = state.case?.id;
+          return track(inner.beta.messages.create(params, opts).then((m) => {
+            note(caseId, params.system === JUDGE_SYSTEM ? "judge" : "app", m);
+            return m;
+          }));
         },
         stream(params, opts) {
+          const caseId = state.case?.id;
           const s = inner.beta.messages.stream(params, opts);
           const final = s.finalMessage.bind(s);
-          s.finalMessage = async () => {
-            const m = await final();
-            note("app", m);
-            return m;
-          };
+          const done = track(final().then((m) => (note(caseId, "app", m), m)));
+          done.catch(() => {});
+          s.finalMessage = () => done;
           return s;
         },
       },
@@ -114,7 +135,8 @@ export function fakeClient(mode, state) {
   };
   const partReply = (prompt) => {
     const i = prompt.includes("part 3 of 3") ? 2 : prompt.includes("part 2 of 3") ? 1 : 0;
-    if (mode === "null") return "Okay.";
+    // Readable but useless: too short, two options, an empty ending.
+    if (mode === "null") return i === 2 ? 'Okay.\n@@@\n{"lesson":"","questions":[]}' : 'Okay.\n@@@\n{"options":["a","b"]}';
     const tail = i === 2
       ? '@@@\n{"lesson":"Taking a breath helps us choose kindly.","questions":["When did you feel a prickly feeling today?","What helps you calm down?"]}'
       : '@@@\n{"options":["Take a slow breath","Grab the acorns","Ask to help"]}';
@@ -127,6 +149,7 @@ export function fakeClient(mode, state) {
     beta: {
       messages: {
         async create(params) {
+          if (mode === "refuse" && params.system !== JUDGE_SYSTEM) return { ...msg(""), stop_reason: "refusal" };
           return msg(params.system === JUDGE_SYSTEM ? judgeReply() : planReply());
         },
         stream(params) {
@@ -180,15 +203,20 @@ export async function runCase(base, c, signal) {
   if (!res.ok) throw new InfraError(`/api/plan HTTP ${res.status}`);
   const plan = await res.json();
   const output = { plan, parts: [], ending: null, refused: false };
+  if (plan.safe === false && String(plan.message || "").startsWith(PLAN_REFUSAL)) {
+    output.refused = "plan";
+    return output;
+  }
   if (plan.safe === false) return output;
   for (let i = 0; i < 3; i++) {
     const history = output.parts.map((p) => ({ text: p.text, choice: p.chosen }));
     const part = await storyPart(base, { ...notes, plan, sig: plan.sig, approved: true, partIndex: i, history }, signal);
-    if (part.error) {
-      output.refused = part.error === "refused";
+    if (part.error === "refused") {
+      output.refused = `part ${i + 1}`;
       output.parts.push({ text: part.text, options: [] });
       break;
     }
+    if (part.error) throw new InfraError(`unparseable: story part ${i + 1} had no usable ${i < 2 ? "options" : "ending"} (${part.error})`);
     const entry = { text: part.text, options: part.options };
     if (i < 2) entry.chosen = part.options[c.picks[i]] ?? part.options[0];
     output.parts.push(entry);
@@ -221,15 +249,15 @@ export function summarise(rows, errors, meta) {
   const names = [...new Set(rows.flatMap((r) => Object.keys(r.checks)))];
   const lines = [];
   lines.push(`Run: ${meta.when} | mode: ${meta.mode} | model: ${meta.model} | judge: ${meta.judgeModel} | reps: ${meta.reps}${meta.label ? ` | label: ${meta.label}` : ""}`);
-  lines.push(`Scored: ${rows.length} | errors (not scored): ${errors.length} | refusals: ${rows.filter((r) => r.output.refused).length}`);
+  lines.push(`Scored: ${rows.length} | errors (not scored): ${errors.length} | refusals: ${rows.filter((r) => r.output.refused).length} | grader failures: ${rows.filter((r) => r.judgeError).length}`);
   lines.push("");
   lines.push("| Check | Passed | Rate |");
   lines.push("|---|---|---|");
   for (const n of names) {
     const graded = rows.filter((r) => r.checks[n] && r.checks[n] !== "n/a");
     const pass = graded.filter((r) => r.checks[n] === "pass").length;
-    const rate = graded.length ? Math.round((100 * pass) / graded.length) : 0;
-    lines.push(`| ${n} | ${pass}/${graded.length} | ${rate}% |`);
+    const rate = graded.length ? `${Math.round((100 * pass) / graded.length)}%` : "n/a";
+    lines.push(`| ${n} | ${pass}/${graded.length} | ${rate} |`);
   }
   lines.push("");
   lines.push("| Category | All checks passed |");
@@ -238,6 +266,15 @@ export function summarise(rows, errors, meta) {
     const rs = rows.filter((r) => r.category === cat);
     const ok = rs.filter((r) => Object.values(r.checks).every((v) => v !== "fail")).length;
     lines.push(`| ${cat} | ${ok}/${rs.length} |`);
+  }
+  const refusals = rows.filter((r) => r.output.refused);
+  if (refusals.length) {
+    lines.push("");
+    lines.push("Refused (not scored as failures): " + refusals.map((r) => `${r.case} (${r.output.refused})`).join(", "));
+  }
+  if (errors.length) {
+    lines.push("");
+    lines.push("Errors (not scored): " + errors.map((e) => `${e.case} - ${e.kind}: ${e.error}`).join("; "));
   }
   const failed = rows.filter((r) => Object.values(r.checks).some((v) => v === "fail"));
   if (failed.length) {
@@ -264,8 +301,10 @@ function cost(calls) {
       if (c.model !== "stand-in") unpriced = true;
       continue;
     }
-    const inTok = (c.usage.input_tokens || 0) + (c.usage.cache_creation_input_tokens || 0) + (c.usage.cache_read_input_tokens || 0);
-    usd += (inTok * p[0] + (c.usage.output_tokens || 0) * p[1]) / 1e6;
+    // Cache writes cost 1.25x input, cache reads 0.05x input (published pricing).
+    const u = c.usage;
+    const inCost = (u.input_tokens || 0) + 1.25 * (u.cache_creation_input_tokens || 0) + 0.05 * (u.cache_read_input_tokens || 0);
+    usd += (inCost * p[0] + (u.output_tokens || 0) * p[1]) / 1e6;
   }
   return { usd, unpriced };
 }
@@ -277,7 +316,10 @@ function writeEvidence(summary, label) {
   const end = `<!-- live-eval:${tag}:end -->`;
   const block = `${start}\n### Live eval: ${tag}\n\n${summary}\n${end}`;
   let doc = existsSync(file) ? readFileSync(file, "utf8") : "# BL-009 evidence\n";
-  if (doc.includes(start)) doc = doc.slice(0, doc.indexOf(start)) + block + doc.slice(doc.indexOf(end) + end.length);
+  const s = doc.indexOf(start);
+  const e = doc.indexOf(end);
+  if (s !== -1 && e > s) doc = doc.slice(0, s) + block + doc.slice(e + end.length);
+  else if (s !== -1 || e !== -1) throw new Error(`docs/evidence/BL-009.md has a broken ${tag} marker; fix it by hand`);
   else doc = `${doc.trimEnd()}\n\n${block}\n`;
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, doc);
@@ -294,11 +336,17 @@ export async function main(argv, log = console.log) {
   const cases = loadCases(args.only);
   const est = estimate(cases, args.reps, model, judgeModel);
 
-  if (!args.dryRun && !args.yes) {
+  if (!args.dryRun) {
     log(`${cases.length} cases x ${args.reps} rep(s) on ${model} (judge: ${judgeModel}).`);
-    log(`Estimated cost: about $${est.toFixed(2)}. Nothing was sent.`);
-    log("Run again with --yes to spend it, or --dry-run to test the eval for free.");
-    return 0;
+    log(`Estimated cost: about $${est.toFixed(2)}. Spending limit: $${args.maxUsd.toFixed(2)}.`);
+    if (!args.yes) {
+      log("Nothing was sent. Run again with --yes to spend it, or --dry-run to test the eval for free.");
+      return 0;
+    }
+    if (est > args.maxUsd) {
+      log(`The estimate is above the spending limit. Nothing was sent. Raise it with --max-usd=${Math.ceil(est)} if you mean it.`);
+      return 1;
+    }
   }
   let inner;
   const state = { case: null };
@@ -313,8 +361,9 @@ export async function main(argv, log = console.log) {
     inner = new Anthropic();
   }
 
-  const bucket = { calls: [] };
-  const client = recording(inner, bucket);
+  const ledger = { calls: [], pending: new Set() };
+  const client = recording(inner, ledger, state);
+  const callsFor = (id) => ledger.calls.filter((c) => c.caseId === id);
   const app = createApp({ client, limit: { windowMs: 60_000, max: 100_000 } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
@@ -326,31 +375,49 @@ export async function main(argv, log = console.log) {
   mkdirSync(outDir, { recursive: true });
   const rows = [];
   const errors = [];
+  let stoppedForBudget = false;
 
   try {
-    for (let rep = 1; rep <= args.reps; rep++) {
+    for (let rep = 1; rep <= args.reps && !stoppedForBudget; rep++) {
       for (const c of cases) {
-        state.case = c;
-        bucket.calls = [];
+        if (cost(ledger.calls).usd >= args.maxUsd) {
+          stoppedForBudget = true;
+          log(`Stopped: the spending limit of $${args.maxUsd.toFixed(2)} was reached.`);
+          break;
+        }
+        state.case = { ...c, id: `${c.id}#${rep}` };
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), CASE_TIMEOUT_MS);
         try {
           const output = await runCase(base, c, controller.signal);
-          const { checks, details } = codeChecks(c, output);
+          const { checks, details } = output.refused
+            ? { checks: Object.fromEntries(Object.keys(codeChecks(c, { plan: {} }).checks).map((k) => [k, "n/a"])), details: {} }
+            : codeChecks(c, output);
           let judged = null;
+          let judgeError = null;
           const storyDone = output.parts.length === 3 && !output.refused;
           if (c.expectSafe && output.plan.safe !== false && storyDone) {
-            judged = await judge(client, judgeModel, c, output, controller.signal);
-            Object.assign(checks, judgeChecks(judged));
+            // A grader failure must not throw away the code checks: its own checks
+            // become n/a and the failure is counted separately.
+            try {
+              judged = await judge(client, judgeModel, c, output, controller.signal);
+              Object.assign(checks, judgeChecks(judged));
+            } catch (err) {
+              if (controller.signal.aborted) throw err;
+              judgeError = String(err?.message || err);
+              for (const k of Object.keys(judgeChecks({ scores: {} }))) checks[k] = "n/a";
+            }
           }
-          const row = { case: c.id, category: c.category, rep, checks, details, judge: judged, output, calls: [...bucket.calls] };
+          const row = { case: c.id, category: c.category, rep, checks, details, judge: judged, judgeError, output, calls: callsFor(state.case.id) };
           rows.push(row);
           appendFileSync(path.join(outDir, "results.jsonl"), JSON.stringify(row) + "\n");
           const failed = Object.entries(checks).filter(([, v]) => v === "fail").map(([k]) => k);
-          log(`${failed.length ? "FAIL" : "ok  "} ${c.id} (rep ${rep})${failed.length ? ": " + failed.join(", ") : ""}`);
+          const status = output.refused ? "REF " : failed.length ? "FAIL" : "ok  ";
+          log(`${status} ${c.id} (rep ${rep})${failed.length ? ": " + failed.join(", ") : output.refused ? `: refused at ${output.refused}` : ""}`);
         } catch (err) {
           const kind = controller.signal.aborted ? "timeout" : err instanceof InfraError ? "infra" : "harness";
-          const row = { case: c.id, rep, kind, error: String(err?.message || err), calls: [...bucket.calls] };
+          const message = String(err?.message || err);
+          const row = { case: c.id, rep, kind: message.startsWith("unparseable") ? "unparseable" : kind, error: message, calls: callsFor(state.case.id) };
           errors.push(row);
           appendFileSync(path.join(outDir, "errors.jsonl"), JSON.stringify(row) + "\n");
           log(`ERR  ${c.id} (rep ${rep}): ${kind} - ${row.error}`);
@@ -360,11 +427,13 @@ export async function main(argv, log = console.log) {
       }
     }
   } finally {
+    // Calls cut off by a timeout are still billed: wait for them (up to a minute).
+    await Promise.race([Promise.allSettled([...ledger.pending]), new Promise((r) => setTimeout(r, 60_000).unref())]);
     server.close();
   }
 
-  const spent = cost([...rows, ...errors].flatMap((r) => r.calls));
-  const summary = summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : model, judgeModel: args.dryRun ? "stand-in" : judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced });
+  const spent = cost(ledger.calls);
+  const summary = (stoppedForBudget ? `STOPPED EARLY: spending limit $${args.maxUsd} reached.\n` : "") + summarise(rows, errors, { when, mode, model: args.dryRun ? "stand-in" : model, judgeModel: args.dryRun ? "stand-in" : judgeModel, reps: args.reps, label: args.label, cost: spent.usd, unpriced: spent.unpriced });
   writeFileSync(path.join(outDir, "summary.md"), summary + "\n");
   if (args.writeEvidence) writeEvidence(summary, args.label);
   log("");

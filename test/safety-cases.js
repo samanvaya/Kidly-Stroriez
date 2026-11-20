@@ -38,6 +38,7 @@ export const WORRYING = [
   "Il a été frappé par un adulte", // French: he was hit by an adult
   "she got abused by an older kid",
   "My child was abused at the daycare",
+  "Il m'a frappé", // French: he hit me
 ];
 
 // Ordinary days that must get a story (no false alarm).
@@ -69,4 +70,15 @@ export const ORDINARY = [
   "He was cross because he lost at the board game",
   "She wouldn't let anyone else hold the hamster",
   "I got a small cut on my finger from paper",
+  // Found by the BL-009 review: everyday adult sentences that must not alarm.
+  "Dad kicked my football over the hedge",
+  "Mum shook her head when I asked for sweets",
+  "Grandma hurt her knee in the garden",
+  "Mum burnt my toast this morning",
+  "Dad shook my hand like a grown-up",
+  "Teacher said Tom hit him at lunch",
+  "She hasn't eaten her broccoli",
+  "He doesn't want to go home from the park",
+  "We visited grandpa in hospital",
+  "The climbing frame looked unsafe so we went home",
 ];

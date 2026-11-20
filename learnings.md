@@ -31,6 +31,8 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
   `[hidden] { display: none !important; }` rule. (2026-11-20)
 
 ## Review
+- A reviewer with fresh eyes found 10 false alarms the author's own test list missed;
+  write the "must not flag" list from everyday sentences first, before the rules. (2026-11-20)
 - A fallback path must not skip a safety check: the offline story was shown whenever
   the live plan failed, including on worrying notes. Fall back only on a clear
   "offline" signal and run the safety check on every path. (2026-11-20)

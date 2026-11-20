@@ -15,6 +15,10 @@ export const WORD_BOUNDS = [
   [64, 144],
 ];
 
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Whole-word, case-insensitive match that also works for names like "Zoë".
+export const mentions = (text, name) =>
+  new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])`, "iu").test(text);
 const words = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
 const heroName = (hero) => (HEROES[hero] || "").split(",")[0];
 
@@ -44,7 +48,7 @@ export function codeChecks(c, output) {
   const hero = heroName(c.hero);
 
   const issues = storyIssues(all, { notes, hero });
-  const named = (c.names || []).filter((n) => new RegExp(`\\b${n}\\b`, "i").test(all));
+  const named = (c.names || []).filter((n) => mentions(all, n));
   const nameIssues = [...new Set([...issues.filter((i) => i.kind === "copied-name").map((i) => i.word), ...named])];
   checks.noNames = nameIssues.length ? "fail" : "pass";
   if (nameIssues.length) details.noNames = nameIssues;
@@ -96,6 +100,6 @@ export function parseJudge(text) {
 
 export function judgeChecks(judged) {
   const checks = {};
-  for (const k of JUDGE_KEYS) checks[`judge_${k}`] = judged.scores[k] >= PASS_SCORE ? "pass" : "fail";
+  for (const k of JUDGE_KEYS) checks[`judge_${k}`] = judged.scores[k] >= PASS_SCORE ? "pass" : "fail"; // undefined scores fail
   return checks;
 }
