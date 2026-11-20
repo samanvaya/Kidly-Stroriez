@@ -18,6 +18,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-011 | Compliance review for children's apps per market | NFR-04 | High | M | idea | open question 4 |
 | BL-012 | Sturdier offline safety check (e.g. a yes/no question to the parent); next after BL-009 per Samy | SR-03, KI-002 | High | S | idea | - |
 | BL-013 | Check finished stories with `storyIssues` before the child sees them | SR-01, SR-02 | Medium | S | idea | BL-009 |
+| BL-015 | NVIDIA Nemotron as the AI provider (Claude stays switchable) | NFR-06 | High | M | draft | BL-009 |
 | BL-014 | Sign the previous plan and the offered options server-side (story history and change requests cannot be edited by the browser) | SR-05, NFR-06 | High | S | idea | - |
 
 ## Next up
