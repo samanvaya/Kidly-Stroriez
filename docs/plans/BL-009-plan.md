@@ -88,4 +88,4 @@ cost from the API's token counts after each run.
 - Deploy and live verification (BL-002, Max).
 
 ---
-Approved by user: [ ] on YYYY-MM-DD
+Approved by user: [x] on 2026-11-20 (Satwik agreed to the safety.js wiring)
