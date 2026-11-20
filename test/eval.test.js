@@ -149,7 +149,8 @@ function fakeNvidia(calls) {
     if (body.messages[0].content.startsWith("You grade")) {
       return json('{"calm":5,"feelings":4,"ageFit":5,"calmEnding":5,"reason":"ok"}');
     }
-    if (!body.stream) {
+    // Plans and story parts are told apart by the prompt (both may be streamed).
+    if (user.includes("Propose a story plan")) {
       if (user.includes("after-school club")) return json('{"safe":false,"message":"Please talk to someone you trust, such as a doctor or teacher."}');
       return json(JSON.stringify({ safe: true, title: "T", theme: "Sharing", lesson: "Taking turns is kind.", setting: "Meadow", echo: "Like today", choices: ["a", "b"] }));
     }

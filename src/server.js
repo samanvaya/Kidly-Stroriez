@@ -15,7 +15,13 @@ try {
 
 const { createApp, resolveProvider } = await import("./app.js");
 const port = Number(process.env.PORT) || 3000;
-const { provider, label } = resolveProvider(process.env);
+let provider, label;
+try {
+  ({ provider, label } = resolveProvider(process.env));
+} catch (err) {
+  console.error(err.message); // e.g. a wrong NVIDIA_STORY_REASONING value
+  process.exit(1);
+}
 const app = createApp({ provider });
 app.listen(port, () => {
   console.log(`Kidly Storiez running on http://localhost:${port} - ${label}`);
