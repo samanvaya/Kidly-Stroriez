@@ -21,6 +21,10 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 ## Build
 
 ## Testing
+- Keep a held-out set when tuning a phrase list or prompt: the safety regex scored
+  29/29 on the notes it was written against but 2/10 on fresh ones. (2026-11-20)
+- Run every eval harness against a "perfect answers" and a "useless answers" stand-in
+  before any paid run; it proves the grader can both pass and fail. (2026-11-20)
 - Take full-page screenshots at phone size and check `scrollWidth`; a hidden radio input
   without a positioned parent made the page scroll sideways. (2026-11-20)
 - Any CSS `display` rule on an element overrides the `hidden` attribute; keep the

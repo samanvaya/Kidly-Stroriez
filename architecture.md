@@ -34,6 +34,21 @@ test/            unit and API tests (fake Claude client)
 7. If a server-side safety fallback switches models mid-part, the server sends `reset`
    and the client clears that part before the new text arrives.
 
+## Evaluation (BL-009)
+Two layers, both in the repo:
+- **Free checks in `./scripts/verify.sh`:** the prompts state every safety rule and
+  fence the parent's text in `<notes>`/`<change>` tags (angle brackets stripped);
+  `public/safety.js` is the offline worrying-notes check, tested on invented notes in
+  `test/safety-cases.js`; `storyIssues` in `src/parse.js` finds banned labels and
+  copied names.
+- **Paid live eval, opt-in (`npm run eval`):** `eval/run.js` starts the real app
+  (`createApp`) with a recording wrapper around the Anthropic client, plays the 21
+  invented days in `eval/cases.json` through `/api/plan` and `/api/story`, and grades
+  them with code checks (`eval/grade.js`) and a Claude judge (`eval/rubric.md`).
+  Without `--yes` it only prints the estimated cost. `--dry-run` uses a stand-in AI
+  (reference answers; `=null` gives useless answers and must fail). Results go to
+  `eval/results/` (git-ignored), a summary to `docs/evidence/BL-009.md`.
+
 ## Cost
 Rough estimate: a story is 1 plan + 3 parts, about 4 x 1.5k input and 4 x ~400 output
 tokens plus thinking at low effort. On claude-opus-5-5 ($4 / $20 per million tokens)

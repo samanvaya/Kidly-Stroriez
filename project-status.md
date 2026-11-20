@@ -24,6 +24,11 @@ Pull the latest `main`, then create separate branches and stay within your owned
 - Do not edit `src/app.js` simultaneously—wire new modules (`BL-003`) into `src/app.js` via small, sequential PRs after the standalone modules are tested.
 - Resolve open questions #2 (age range) and #8 (whether to keep parent notes) in `docs/REQUIREMENTS.md` Section 10 before starting `BL-004` (saved stories).
 
+## BL-009 (Samy)
+In review on branch `feat/BL-009-safety-eval`: offline check widened, story scanner,
+prompt fencing and the live eval (built and tested with a stand-in AI). The paid live
+run waits for an Anthropic API key; nobody on the team has one yet.
+
 ## Open decisions
 - All open questions in `docs/REQUIREMENTS.md` section 10 (name, age range, choice moments, launch markets, price, safety review, AI provider, keeping parent notes).
 
@@ -34,4 +39,7 @@ Pull the latest `main`, then create separate branches and stay within your owned
   secret settings.
 
 ## Gotchas
+- `npm start` does not read `.env` (no loader), so a key in `.env` is ignored and the
+  app stays offline. Fix for BL-002: start with `node --env-file=.env` or load it in
+  `src/server.js`. (Found in BL-009, 2026-11-20.)
 - Anthropic keys cannot be stored as cloud-session secrets, so the live path could not be tested in the build session. Test it on the deployed app.

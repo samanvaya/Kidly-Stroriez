@@ -35,6 +35,16 @@ npm start            # http://localhost:3000
 ./scripts/verify.sh  # lint and tests
 ```
 
+## 4. Safety eval (optional, costs money)
+
+```bash
+npm run eval                      # shows the cases and the estimated cost, sends nothing
+npm run eval -- --dry-run         # tests the eval itself with a stand-in AI, free
+npm run eval -- --yes             # real run with ANTHROPIC_API_KEY from .env (about $2.50)
+```
+
+Add `--label=before --write-evidence` to save the summary in `docs/evidence/BL-009.md`.
+
 ## Moving between machines
 Never email, message, or paste secrets into a chat window. Get fresh values from the
 sources above on each machine. If a key has ever appeared in a chat transcript or a
