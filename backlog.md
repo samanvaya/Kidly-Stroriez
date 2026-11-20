@@ -13,7 +13,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-006 | Read aloud | FR-40 | Medium | M | idea | - |
 | BL-007 | Illustrations with consistent characters | FR-41 | Medium | L | idea | - |
 | BL-008 | Voice dictation for the parent | FR-04 | Low | S | idea | - |
-| BL-009 | Safety and quality evaluation set for prompts | SR-01..SR-06, KI-002 | High | M | implementation | - |
+| BL-009 | Safety and quality evaluation set for prompts | SR-01..SR-06, KI-002 | High | M | implementation (merged, waiting for user check) | - |
 | BL-010 | Pricing, free tier and paid plan | FR-60..FR-63 | Medium | L | idea | open question 5 |
 | BL-011 | Compliance review for children's apps per market | NFR-04 | High | M | idea | open question 4 |
 | BL-012 | Support NVIDIA Nemotron Ultra AI provider | Open question 7, NFR-01, NFR-06 | High | S | implementation (merged, waiting for user check) | - |

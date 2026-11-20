@@ -1,7 +1,7 @@
 # Project status
 
 Last updated: 2026-11-20
-Last merged: BL-012 - Support NVIDIA Nemotron Ultra AI provider (PR #5)
+Last merged: BL-009 - Safety and prompt-quality evaluation (PR #4)
 
 ## Active work
 - **Max:** `BL-012` (NVIDIA Nemotron Ultra support) is merged and waiting for Max's live human acceptance check (`docs/requirements/BL-012.md` & `docs/requirements/BL-001.md`), then moving to `BL-002` (Deploy).
@@ -29,7 +29,7 @@ Pull the latest `main`, then create separate branches and stay within your owned
 - Resolve open questions #2 (age range) and #8 (whether to keep parent notes) in `docs/REQUIREMENTS.md` Section 10 before starting `BL-004` (saved stories).
 
 ## BL-009 (Samy)
-PR #4 open for Samy's check (not merged). Offline check: 94/94 test notes caught,
+Merged in PR #4 (2026-11-20), waiting for Samy's human acceptance check. Offline check: 94/94 test notes caught,
 0/80 false alarms, 4/10 on unseen wordings. Story scanner, prompt fencing and the live
 eval are built; the eval is tested only with a stand-in AI. Next: let the eval run on
 the NVIDIA provider from BL-012 (it only drives Claude today), then BL-013.
