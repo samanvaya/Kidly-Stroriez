@@ -29,7 +29,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 - KI-001 (BL-001): the live AI path is untested against the real API in this session
   (no key available here). Test it before the demo; the offline story covers outages.
 - KI-002 (BL-001): the offline safety check is a phrase list. BL-009 widened it (all
-  30 test notes caught, 0 of 37 false alarms), but it catches only 2 of 10 unseen wordings
+  44 test notes caught, 0 of 37 false alarms), but it catches only 2 of 10 unseen wordings
   (docs/evidence/BL-009.md). Needs a sturdier design, see BL-012.
 - KI-003 (BL-001): the plan-signing secret is random per server start unless
   PLAN_SECRET is set; a restart mid-story asks the parent to make the plan again.

@@ -31,6 +31,9 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
   `[hidden] { display: none !important; }` rule. (2026-11-20)
 
 ## Review
+- Fixing false alarms in a safety filter can silently create misses: after every change
+  to `public/safety.js`, rerun the full worrying list and add each new miss to it. In a
+  child-safety check a miss is worse than a false alarm. (2026-11-20)
 - A reviewer with fresh eyes found 10 false alarms the author's own test list missed;
   write the "must not flag" list from everyday sentences first, before the rules. (2026-11-20)
 - A fallback path must not skip a safety check: the offline story was shown whenever
