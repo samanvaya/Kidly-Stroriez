@@ -15,6 +15,7 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 -->
 
 ## Planning
+- Query the provider's live `/v1/models` endpoint instead of guessing model IDs; NVIDIA NIM's Nemotron Ultra ID is `nvidia/nemotron-3-ultra-550b-a55b`. (2026-11-20)
 
 ## Design
 
@@ -30,6 +31,7 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 - A fallback path must not skip a safety check: the offline story was shown whenever
   the live plan failed, including on worrying notes. Fall back only on a clear
   "offline" signal and run the safety check on every path. (2026-11-20)
+- Validate configurable external base URLs (`https://` only except loopback) and set `redirect: "error"` on `fetch` so Bearer keys, system prompts, and user notes cannot leak via HTTP or 307/308 redirects. (2026-11-20)
 
 ## Deploy
 

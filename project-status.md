@@ -1,18 +1,18 @@
 # Project status
 
 Last updated: 2026-11-20
-Last merged: PR #2 - Update project-status.md with BL-001 merge and team work split (after BL-001 in PR #1)
+Last merged: BL-012 - Support NVIDIA Nemotron Ultra AI provider (PR #5)
 
 ## Active work
-- **Max:** Working on `BL-012` (Support NVIDIA Nemotron Ultra AI provider so we can run and test the live demo with an NVIDIA NIM key before `BL-001` acceptance & `BL-002` deploy).
+- **Max:** `BL-012` (NVIDIA Nemotron Ultra support) is merged and waiting for Max's live human acceptance check (`docs/requirements/BL-012.md` & `docs/requirements/BL-001.md`), then moving to `BL-002` (Deploy).
 
 ## Where we are
-`BL-001` is merged to `main` (PR #1). The hackathon demo works end to end on a phone with the built-in offline story, and the live Claude path is built and unit-tested with a fake client. Phases 1-4 were compressed into a few decisions because the hackathon is today (2 hours).
+`BL-001` (hackathon demo) and `BL-012` (NVIDIA Nemotron Ultra backend adapter) are merged to `main`. The app runs with `NVIDIA_API_KEY`, `ANTHROPIC_API_KEY`, or the built-in offline story, and all 26 unit/integration tests pass with fake/mocked clients.
 
 ## Next step
-1. Finish `BL-012` (add NVIDIA Nemotron Ultra provider support alongside Claude).
-2. Run the `BL-001` human acceptance test in `docs/requirements/BL-001.md` against the live AI, and deploy (`BL-002`) with `NVIDIA_API_KEY` (or `ANTHROPIC_API_KEY`) and `PLAN_SECRET` set on the host.
-3. Split into parallel, conflict-free tracks below.
+1. Max runs the live human acceptance test in `docs/requirements/BL-012.md` and `docs/requirements/BL-001.md` locally with a fresh `NVIDIA_API_KEY` in `.env`.
+2. Plan and deploy `BL-002` with `NVIDIA_API_KEY` (or `ANTHROPIC_API_KEY`) and `PLAN_SECRET` set on the host.
+3. Samy (`BL-009`) and Satwik (`BL-003` or `BL-006`) proceed in parallel tracks below.
 
 ## Team work split (conflict-free)
 

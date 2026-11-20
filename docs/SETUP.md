@@ -18,12 +18,14 @@ Copy the example file. Never commit the real one, it is git-ignored for a reason
 cp .env.example .env
 ```
 
-### `ANTHROPIC_API_KEY`
-- **What it is:** lets the server ask Claude to write plans and stories.
-- **Where to get it:** console.anthropic.com > API Keys > Create Key.
-- **Cost:** pay per use; roughly 5-6 US cents per story on the default model.
+### `NVIDIA_API_KEY` (or `ANTHROPIC_API_KEY`)
+- **What it is:** lets the server ask NVIDIA Nemotron Ultra (or Claude) to write plans and stories.
+- **Where to get an NVIDIA key:** build.nvidia.com > API Keys > Generate Key.
+- **Where to get an Anthropic key:** console.anthropic.com > API Keys > Create Key.
+- **Provider selection (`AI_PROVIDER`):** defaults to `auto` (uses `NVIDIA_API_KEY` if set, otherwise `ANTHROPIC_API_KEY`, otherwise runs the built-in offline story). Set `AI_PROVIDER=nvidia` or `AI_PROVIDER=anthropic` to choose explicitly.
+- **Cost:** Anthropic is pay per use (roughly 5-6 US cents per story on the default model); NVIDIA NIM offers free developer credits on build.nvidia.com.
 - **If you lose it:** create a new one in the same place and delete the old one.
-- **Optional:** without it the app runs the built-in offline story.
+- **Optional:** without either key the app runs the built-in offline story.
 
 On a hosting service (Render, Railway, ...) put it in the service's environment
 variables, never in the code.

@@ -16,13 +16,12 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-009 | Safety and quality evaluation set for prompts | SR-01..SR-06 | High | M | idea | - |
 | BL-010 | Pricing, free tier and paid plan | FR-60..FR-63 | Medium | L | idea | open question 5 |
 | BL-011 | Compliance review for children's apps per market | NFR-04 | High | M | idea | open question 4 |
-| BL-012 | Support NVIDIA Nemotron Ultra AI provider | Open question 7, NFR-01, NFR-06 | High | S | draft | - |
+| BL-012 | Support NVIDIA Nemotron Ultra AI provider | Open question 7, NFR-01, NFR-06 | High | S | implementation (merged, waiting for user check) | - |
 
 ## Next up
-1. BL-012 - add NVIDIA Nemotron Ultra support (Max)
-2. BL-001 - finish the demo check (human acceptance test in `docs/requirements/BL-001.md`)
-3. BL-002 - deploy for the demo
-4. BL-004 - saved stories (asked for by the team after the demo)
+1. BL-012 & BL-001 - run live human acceptance test (`docs/requirements/BL-012.md` & `docs/requirements/BL-001.md`) with `NVIDIA_API_KEY` in `.env`
+2. BL-002 - deploy for the demo
+3. BL-004 - saved stories (asked for by the team after the demo)
 
 ## Known issues
 - KI-001 (BL-001): the live AI path is untested against the real API in this session

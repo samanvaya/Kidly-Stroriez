@@ -1,8 +1,8 @@
-import { createApp } from "./app.js";
+import { createApp, resolveProvider } from "./app.js";
 
 const port = Number(process.env.PORT) || 3000;
-const app = createApp();
+const { provider, label } = resolveProvider(process.env);
+const app = createApp({ provider });
 app.listen(port, () => {
-  const mode = process.env.ANTHROPIC_API_KEY ? "live (Claude)" : "offline demo story only";
-  console.log(`Kidly Storiez running on http://localhost:${port} - ${mode}`);
+  console.log(`Kidly Storiez running on http://localhost:${port} - ${label}`);
 });
