@@ -20,6 +20,8 @@ turn belongs in AGENTS.md instead. No secrets or personal data.
 ## Design
 
 ## Build
+- `src/app.js` reads settings when it is imported, so `src/server.js` loads `.env` first
+  and imports the app afterwards (dynamic import); keep that order. (2026-11-20)
 
 ## Testing
 - Keep a held-out set when tuning a phrase list or prompt: the safety regex scored

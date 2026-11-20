@@ -39,9 +39,10 @@ the NVIDIA provider from BL-012 (it only drives Claude today), then BL-013.
 
 ## Security incidents
 - 2026-11-20: an NVIDIA API key was pasted into the chat of a Claude Code session
-  (BL-009 kickoff). Not used, not stored, not committed. Open: the owner revokes it at
-  build.nvidia.com and creates a new one; keys go only into `.env` or the host's
-  secret settings.
+  (BL-009 kickoff, again for BL-015). Not used, not stored, not committed. Closed by
+  Samy's decision (2026-11-20): the key is under the owner's control and is not being
+  rotated. Rule kept: keys go only into `.env`, the host's secret settings or the
+  session's secure credential form, never into chat.
 
 ## Gotchas
 - BL-009 stuck rule (2026-11-20): three attempts to make the offline phrase list in
@@ -53,8 +54,6 @@ the NVIDIA provider from BL-012 (it only drives Claude today), then BL-013.
   finds a new family of wordings: a phrase list cannot reliably recognise meaning.
   Decided by Samy: one final patch (done: all 94 + 80 sentences pass), then stop
   patching the list and do BL-013.
-- `npm start` does not read `.env` (no loader), so a key in `.env` is ignored and the
-  app stays offline. Still true after BL-012: `NVIDIA_API_KEY` in `.env` is ignored
-  too. Fix: start with `node --env-file=.env` or load it in `src/server.js`.
-  (Found in BL-009, 2026-11-20.)
+- Fixed in BL-017: `npm start` now reads `.env` (it used to ignore it, so a key there
+  left the app offline). Variables set by the host still win.
 - Anthropic keys cannot be stored as cloud-session secrets, so the live path could not be tested in the build session. Test it on the deployed app.
