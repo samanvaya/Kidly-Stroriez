@@ -11,6 +11,7 @@
     plan: null,
     parts: [], // { text, options, chosen }
     speak: false,
+    paused: false,
     busy: false,
     controller: null,
     run: 0, // bumped on "New story" so an offline story stops typing
@@ -38,15 +39,113 @@
 
   const tts = {
     supported: "speechSynthesis" in window,
-    say(text) {
-      if (!this.supported || !state.speak || !text.trim()) return;
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text.trim());
-      u.rate = 0.9;
-      u.pitch = 1.05;
-      speechSynthesis.speak(u);
+    rate: 1.0,
+    _rates: [0.75, 1.0, 1.25, 1.5],
+    _rateIdx: 1,
+    _text: "",
+    _fromChar: 0,
+    _charIndex: 0,
+    _para: null,
+
+    say(text, para) {
+      if (!this.supported || !state.speak) return;
+      text = text.trim();
+      if (!text) return;
+      this._text = text;
+      this._fromChar = 0;
+      this._charIndex = 0;
+      this._para = para || null;
+      if (this._para) this._wrapWords();
+      state.paused = false;
+      this._speak();
     },
-    stop() { if (this.supported) speechSynthesis.cancel(); },
+
+    _speak() {
+      speechSynthesis.cancel();
+      const sub = this._text.slice(this._fromChar);
+      if (!sub.trim()) return;
+      const u = new SpeechSynthesisUtterance(sub);
+      u.rate = this.rate;
+      u.pitch = 1.05;
+      u.onboundary = (e) => {
+        if (e.name === "word") {
+          this._charIndex = this._fromChar + e.charIndex;
+          this._highlight(this._charIndex);
+        }
+      };
+      u.onend = () => {
+        this._clearHighlight();
+        state.paused = false;
+        updateSpeakBtn();
+      };
+      speechSynthesis.speak(u);
+      updateSpeakBtn();
+    },
+
+    pause() {
+      speechSynthesis.cancel();
+      this._fromChar = this._charIndex;
+      state.paused = true;
+      updateSpeakBtn();
+    },
+
+    resume() {
+      if (!this._text) return;
+      state.paused = false;
+      if (this._para) this._wrapWords();
+      this._speak();
+    },
+
+    stop() {
+      if (!this.supported) return;
+      speechSynthesis.cancel();
+      this._clearHighlight();
+      this._text = "";
+      this._fromChar = 0;
+      this._charIndex = 0;
+      this._para = null;
+      state.paused = false;
+    },
+
+    nextRate() {
+      this._rateIdx = (this._rateIdx + 1) % this._rates.length;
+      this.rate = this._rates[this._rateIdx];
+      if (this._text) this._speak();
+      updateSpeakBtn();
+    },
+
+    _wrapWords() {
+      if (!this._para) return;
+      const chunks = this._text.split(/(\s+)/);
+      let pos = 0;
+      const nodes = [];
+      for (const chunk of chunks) {
+        if (/^\s+$/.test(chunk)) {
+          nodes.push(document.createTextNode(chunk));
+        } else {
+          const sp = document.createElement("span");
+          sp.className = "tts-word";
+          sp.dataset.start = pos;
+          sp.textContent = chunk;
+          nodes.push(sp);
+        }
+        pos += chunk.length;
+      }
+      this._para.replaceChildren(...nodes);
+    },
+
+    _highlight(charIndex) {
+      if (!this._para) return;
+      this._para.querySelectorAll(".tts-word").forEach((sp) => {
+        const start = Number(sp.dataset.start);
+        sp.classList.toggle("tts-active", start <= charIndex && charIndex < start + sp.textContent.length);
+      });
+    },
+
+    _clearHighlight() {
+      if (!this._para) return;
+      this._para.querySelectorAll(".tts-word").forEach((sp) => sp.classList.remove("tts-active"));
+    },
   };
 
   function updateSpeakBtn() {
@@ -54,8 +153,21 @@
     if (!btn) return;
     btn.setAttribute("aria-pressed", String(state.speak));
     btn.setAttribute("aria-label", state.speak ? "Read aloud: on" : "Read aloud: off");
-    btn.textContent = state.speak ? "🔊 Reading aloud" : "🔇 Read aloud";
+    btn.textContent = state.speak ? "🔊 Read aloud" : "🔇 Read aloud";
     btn.classList.toggle("speak-on", state.speak);
+
+    const pauseBtn = $("pause-btn");
+    if (pauseBtn) {
+      const hasActivity = tts.supported && state.speak && Boolean(tts._text);
+      pauseBtn.hidden = !hasActivity;
+      pauseBtn.textContent = state.paused ? "▶ Resume" : "⏸ Pause";
+      pauseBtn.setAttribute("aria-label", state.paused ? "Resume" : "Pause");
+    }
+    const speedBtn = $("speed-btn");
+    if (speedBtn) {
+      speedBtn.hidden = !state.speak;
+      speedBtn.textContent = `${tts.rate}×`;
+    }
   }
 
   // ---------- 1. start ----------
@@ -203,6 +315,7 @@
   });
 
   function renderStory() {
+    tts._para = null;
     const article = $("story");
     const nodes = [];
     state.parts.forEach((p) => {
@@ -252,6 +365,7 @@
 
   $("go-back").addEventListener("click", () => {
     if (state.busy || state.parts.length < 2) return;
+    tts.stop();
     state.parts.pop();
     const last = state.parts[state.parts.length - 1];
     last.chosen = null;
@@ -263,11 +377,31 @@
   });
 
   $("speak-btn").addEventListener("click", () => {
-    state.speak = !state.speak;
+    if (!state.speak) {
+      state.speak = true;
+      if (tts._text && state.paused) {
+        tts.resume();
+      } else if (tts._text) {
+        tts._fromChar = 0;
+        tts._charIndex = 0;
+        state.paused = false;
+        if (tts._para) tts._wrapWords();
+        tts._speak();
+      }
+    } else {
+      state.speak = false;
+      tts.pause();
+    }
     updateSpeakBtn();
-    if (!state.speak) tts.stop();
   });
   if (!tts.supported) $("speak-btn").hidden = true;
+
+  $("pause-btn").addEventListener("click", () => {
+    if (state.paused) tts.resume();
+    else tts.pause();
+  });
+
+  $("speed-btn").addEventListener("click", () => { tts.nextRate(); });
 
   $("restart").addEventListener("click", () => {
     tts.stop();
@@ -324,7 +458,7 @@
       }));
       $("ending").hidden = false;
     }
-    tts.say(part.text);
+    tts.say(part.text, currentParagraph());
   }
 
   async function livePart(index, part) {

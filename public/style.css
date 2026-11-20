@@ -81,9 +81,11 @@ textarea { resize: vertical; }
 .plan ol { margin: 4px 0 0; padding-left: 20px; }
 .change { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
 .story-title { color: var(--accent); }
-.story-controls { margin: 4px 0 14px; }
+.story-controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
 #speak-btn.speak-on { border-color: var(--accent); color: var(--accent); }
 #go-back { min-height: 44px; padding: 10px 16px; }
+.tts-word { border-radius: 3px; }
+.tts-word.tts-active { background: var(--accent); color: var(--accent-ink); padding: 0 1px; }
 .story { font-size: 22px; line-height: 1.65; }
 .story p { margin: 0 0 18px; white-space: pre-wrap; }
 .story .chosen { font-size: 16px; color: var(--soft); font-weight: 700; margin: -4px 0 18px; }
