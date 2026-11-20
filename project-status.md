@@ -35,6 +35,10 @@ Merged in PR #4 (2026-11-20), waiting for Samy's human acceptance check. Offline
 eval are built; the eval is tested only with a stand-in AI. Next: let the eval run on
 the NVIDIA provider from BL-012 (it only drives Claude today), then BL-013.
 
+## Housekeeping
+- Delete later (Samy, 2026-11-20): branch `feat/BL-015-nvidia-provider` (only the
+  plan of cancelled BL-015, a duplicate of BL-012). Kept for now on purpose.
+
 ## Open decisions
 - All open questions in `docs/REQUIREMENTS.md` section 10 (name, age range, choice moments, launch markets, price, safety review, AI provider, keeping parent notes).
 

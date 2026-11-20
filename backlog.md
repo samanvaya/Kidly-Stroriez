@@ -23,6 +23,7 @@ Requirement IDs (FR/SR/NFR) refer to `docs/REQUIREMENTS.md`.
 | BL-017 | Load `.env` at start (small fix) | NFR-06 | High | S | implementation (merged, waiting for user check) | - |
 | BL-020 | Safety eval runs on whichever AI provider the app uses (small fix) | SR-01..SR-06 | High | S | implementation (merged, waiting for user check) | BL-017 |
 | BL-016 | Sign the previous plan and the offered options server-side (story history and change requests cannot be edited by the browser) | SR-05, NFR-06 | High | S | idea | - |
+| BL-021 | NVIDIA provider: reasoning level per call, stream plans (small fix) | NFR-01 | High | S | implementation | - |
 | BL-018 | Share library stories via link (add to recipient's library) | FR-54 | Medium | M | idea | BL-004 |
 | BL-019 | Optional parallel pre-generation of all story choice continuations | NFR-01, NFR-08, FR-23, FR-26 | High | M | draft | - |
 

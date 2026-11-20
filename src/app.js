@@ -157,6 +157,8 @@ export function resolveProvider(env = process.env, { fetchImpl, timeoutMs } = {}
       apiKey: nvidiaKey,
       model: envStr(env?.NVIDIA_MODEL) || undefined,
       baseUrl: envStr(env?.NVIDIA_BASE_URL) || undefined,
+      planReasoning: envStr(env?.NVIDIA_PLAN_REASONING) || undefined,
+      storyReasoning: envStr(env?.NVIDIA_STORY_REASONING) || undefined,
       fetchImpl,
       timeoutMs,
     });
