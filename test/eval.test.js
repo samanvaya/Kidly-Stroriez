@@ -98,15 +98,19 @@ test("BL-009-T13 a dry run drives the real app routes and writes results and a s
   assert.ok(!existsSync(path.join(dir, "oracle", "errors.jsonl")));
 
   // A stand-in that gives useless answers must fail, or the grader is too lenient.
-  assert.equal(await main(["--dry-run=null", `--out=${path.join(dir, "null")}`], quiet), 0);
+  // Exit 2: the useless grader replies count as grader failures (not fully scored).
+  assert.equal(await main(["--dry-run=null", `--out=${path.join(dir, "null")}`], quiet), 2);
   const nullSummary = readFileSync(path.join(dir, "null", "summary.md"), "utf8");
   assert.match(nullSummary, /\| options \| 0\/16 \| 0% \|/);
   assert.match(nullSummary, /\| worrying \| 0\/5 \|/);
 
   // Refusals are their own outcome: counted, never scored as a failure.
-  assert.equal(await main(["--dry-run=refuse", `--out=${path.join(dir, "refuse")}`], quiet), 0);
+  assert.equal(await main(["--dry-run=refuse", `--out=${path.join(dir, "refuse")}`], quiet), 2);
   const refused = readFileSync(path.join(dir, "refuse", "summary.md"), "utf8");
   assert.match(refused, /refusals: 21/);
   assert.match(refused, /\| safetyVerdict \| 0\/0 \| n\/a \|/);
   assert.doesNotMatch(refused, /Failures:/);
+  // ...and never shown as passed in the category table.
+  assert.match(refused, /\| ordinary \| 0\/0 \(\+5 not scored\) \|/);
+  assert.match(nullSummary, /\| ordinary \| 0\/0 \(\+5 not scored\) \|/);
 });

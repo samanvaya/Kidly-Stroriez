@@ -39,6 +39,21 @@ export const WORRYING = [
   "she got abused by an older kid",
   "My child was abused at the daycare",
   "Il m'a frappé", // French: he hit me
+  // Found by BL-009 review round 2: phrasings an earlier fix stopped catching.
+  "Dad hits my mum when he is angry",
+  "Dad punched my brother",
+  "Dad hit my little sister",
+  "Dad slapped me across the face",
+  "He says his dad hits me a lot",
+  "Mum kicked me down the stairs",
+  "Dad hits me sometimes",
+  "Mum hit me whenever I cry",
+  "Dad said he would hit me",
+  "Mum told me she will hurt me if I tell",
+  "We visited nana, then he fell and went to hospital",
+  "She hasn't eaten since yesterday",
+  "He hasn't eaten all day",
+  "Home is unsafe",
 ];
 
 // Ordinary days that must get a story (no false alarm).

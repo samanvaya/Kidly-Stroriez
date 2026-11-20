@@ -216,7 +216,8 @@ export async function runCase(base, c, signal) {
       output.parts.push({ text: part.text, options: [] });
       break;
     }
-    if (part.error) throw new InfraError(`unparseable: story part ${i + 1} had no usable ${i < 2 ? "options" : "ending"} (${part.error})`);
+    if (part.error === "no-options") throw new InfraError(`unparseable: story part ${i + 1} had no usable options`);
+    if (part.error) throw new InfraError(`story part ${i + 1} failed (${part.error})`);
     const entry = { text: part.text, options: part.options };
     if (i < 2) entry.chosen = part.options[c.picks[i]] ?? part.options[0];
     output.parts.push(entry);
@@ -244,6 +245,22 @@ async function judge(client, model, c, output, signal) {
   }
 }
 
+// A refused case is not scored, except that text already written is still checked for
+// names and banned labels (those must never reach the child, refusal or not).
+function refusedChecks(c, output) {
+  const keys = Object.keys(codeChecks(c, { plan: {} }).checks);
+  const checks = Object.fromEntries(keys.map((k) => [k, "n/a"]));
+  let details = {};
+  if (output.parts.length) {
+    const partial = codeChecks(c, { ...output, parts: output.parts.map((p) => ({ ...p, options: ["a", "b", "c"] })) });
+    for (const k of ["noNames", "noBannedWords"]) {
+      checks[k] = partial.checks[k];
+      if (partial.details[k]) details[k] = partial.details[k];
+    }
+  }
+  return { checks, details };
+}
+
 // ---------- summary ----------
 export function summarise(rows, errors, meta) {
   const names = [...new Set(rows.flatMap((r) => Object.keys(r.checks)))];
@@ -262,10 +279,14 @@ export function summarise(rows, errors, meta) {
   lines.push("");
   lines.push("| Category | All checks passed |");
   lines.push("|---|---|");
+  // Refused and grader-failed rows are not fully scored, so they never count as passed.
+  const unscored = (r) => r.output.refused || r.judgeError;
   for (const cat of [...new Set(rows.map((r) => r.category))]) {
-    const rs = rows.filter((r) => r.category === cat);
+    const all = rows.filter((r) => r.category === cat);
+    const rs = all.filter((r) => !unscored(r));
     const ok = rs.filter((r) => Object.values(r.checks).every((v) => v !== "fail")).length;
-    lines.push(`| ${cat} | ${ok}/${rs.length} |`);
+    const left = all.length - rs.length;
+    lines.push(`| ${cat} | ${ok}/${rs.length}${left ? ` (+${left} not scored)` : ""} |`);
   }
   const refusals = rows.filter((r) => r.output.refused);
   if (refusals.length) {
@@ -380,7 +401,8 @@ export async function main(argv, log = console.log) {
   try {
     for (let rep = 1; rep <= args.reps && !stoppedForBudget; rep++) {
       for (const c of cases) {
-        if (cost(ledger.calls).usd >= args.maxUsd) {
+        // Calls still running are counted at a cautious $0.10 each.
+        if (cost(ledger.calls).usd + 0.1 * ledger.pending.size >= args.maxUsd) {
           stoppedForBudget = true;
           log(`Stopped: the spending limit of $${args.maxUsd.toFixed(2)} was reached.`);
           break;
@@ -391,7 +413,7 @@ export async function main(argv, log = console.log) {
         try {
           const output = await runCase(base, c, controller.signal);
           const { checks, details } = output.refused
-            ? { checks: Object.fromEntries(Object.keys(codeChecks(c, { plan: {} }).checks).map((k) => [k, "n/a"])), details: {} }
+            ? refusedChecks(c, output)
             : codeChecks(c, output);
           let judged = null;
           let judgeError = null;
@@ -416,6 +438,9 @@ export async function main(argv, log = console.log) {
           log(`${status} ${c.id} (rep ${rep})${failed.length ? ": " + failed.join(", ") : output.refused ? `: refused at ${output.refused}` : ""}`);
         } catch (err) {
           const kind = controller.signal.aborted ? "timeout" : err instanceof InfraError ? "infra" : "harness";
+          // A timed-out case may leave paid calls running: let them finish (up to a
+          // minute) so their cost lands on this case and the budget check sees it.
+          if (kind === "timeout") await Promise.race([Promise.allSettled([...ledger.pending]), new Promise((r) => setTimeout(r, 60_000).unref())]);
           const message = String(err?.message || err);
           const row = { case: c.id, rep, kind: message.startsWith("unparseable") ? "unparseable" : kind, error: message, calls: callsFor(state.case.id) };
           errors.push(row);
@@ -440,7 +465,10 @@ export async function main(argv, log = console.log) {
   log(summary);
   log("");
   log(`Saved to ${path.relative(root, outDir) || outDir}`);
-  return 0;
+  // Exit 2 when some cases could not be fully scored (refusals, grader failures,
+  // errors, budget stop), so a script or person cannot mistake the run for a clean pass.
+  const incomplete = errors.length || stoppedForBudget || rows.some((r) => r.output.refused || r.judgeError);
+  return incomplete ? 2 : 0;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

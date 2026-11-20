@@ -13,22 +13,29 @@
     "(?:hit|hits|hitting|kick(?:s|ed|ing)?|slap(?:s|ped|ping)?|punch(?:es|ed|ing)?|beat(?:s|en|ing)?|" +
     "chok(?:e|es|ed|ing)|strangl\\w*|burn(?:s|ed|t|ing)?|shake|shakes|shook|shaking|hurt(?:s|ed|ing)?|" +
     "smack(?:s|ed|ing)?|whip(?:s|ped|ping)?|attack(?:s|ed|ing)?)";
-  // Who gets hurt: an object pronoun that ends the phrase ("slapped her and..."),
-  // so "shook her head" or "kicked my football" do not count.
-  const PERSON = "(?:me|him|her|them|us|the baby)";
-  const AFTER =
-    "(?=\\s*(?:$|[.,!?;:]|(?:and|when|so|because|until|till|with|in|on|at|hard|badly|really|again|every|all|if|after|before|for|while|but|then|twice|once|today|yesterday|last|to|behind|up|around|over|again)\\b))";
-  // Between the adult and the verb: a few words, but not "said"/"told" (reported speech
-  // about someone else: "teacher said Tom hit him").
+  // Who gets hurt. When in doubt this errs towards flagging: a missed serious note is
+  // worse than a false alarm. "her" followed by a thing ("shook her head", "hurt her
+  // knee") is a possessive, not a person.
+  const FAMILY =
+    "(?:little\\s+|big\\s+|baby\\s+|younger\\s+|older\\s+)?(?:mum|mom|mummy|mommy|mother|dad|daddy|father|brother|brothers|sister|sisters|baby|son|daughter|child|children|kid|kids|family|friend|cousin|nan|nana|grandma|grandpa|twin|twins)";
+  const HER_THING =
+    "(?:head|hand|hands|knee|knees|toast|own|hair|car|bag|phone|food|dinner|lunch|book|nose|eyes|way|best|toy|toys|shoe|shoes|coat|keys|drink|cup|tea|coffee|foot|feet|ankle|back|elbow|finger|fingers|thumb|toe|toes|wrist|shoulder)";
+  const PERSON = `(?:me|him|them|us|the baby|her(?!\\s+${HER_THING}\\b)|(?:my|his|her|their|our)\\s+${FAMILY}\\b)`;
+  // Between the adult and the verb: a few words, but not reported speech about someone
+  // else ("teacher said Tom hit him"). Threats are matched separately below.
   const GAP = "(?:(?!\\b(?:said|says|told|tells|saw|sees|thinks|thought|heard)\\b)[^.!?]){0,30}?";
   const BODY = "(?:face|head|arm|arms|hand|hands|leg|legs|back|neck|skin|ear|ears|cheek|tummy|bottom)";
 
   const PATTERNS = [
-    // An adult hurting a person: "dad hit me", but not "dad hit the ball".
-    new RegExp(`\\b${ADULT}\\b${GAP}\\b${HURT}\\s+${PERSON}${AFTER}`),
-    // ...or a body part: "mum burned my hand" (not "hit/kicked/hurt", which are ordinary
-    // for one's own head or a football).
+    // An adult hurting a person: "dad hit me", "dad punched my brother", but not "dad
+    // hit the ball" or "mum shook her head".
+    new RegExp(`\\b${ADULT}\\b${GAP}\\b${HURT}\\s+${PERSON}`),
+    // Threats: "dad said he would hit me", "mum told me she will hurt me if I tell".
+    new RegExp(`\\b${ADULT}\\b[^.!?]{0,40}?\\b(?:said|says|told|tells|threaten\\w*)\\b[^.!?]{0,40}?\\b(?:would|will|'ll|gonna|going to)\\s+${HURT}\\s+${PERSON}`),
+    // ...or a body part: "mum burned my hand", "dad hit my face". Hit/kick/hurt only with
+    // "my" (the child's own words), since "grandma hurt her knee" is ordinary.
     new RegExp(`\\b${ADULT}\\b${GAP}\\b(?:slap\\w*|punch\\w*|burn\\w*|smack\\w*|chok\\w*|whip\\w*|beat\\w*)\\s+(?:my|his|her|their|our)\\s+${BODY}\\b`),
+    new RegExp(`\\b${ADULT}\\b${GAP}\\b(?:hit|hits|kick\\w*|hurt\\w*)\\s+my\\s+${BODY}\\b`),
     new RegExp(`\\b${ADULT}\\b${GAP}\\bgrab\\w*\\s+(?:\\w+\\s+)?by\\s+the\\s+(?:neck|throat|hair)`),
     new RegExp(`\\b(?:hit|kicked|slapped|punched|beaten|hurt|attacked|shaken|abused)\\s+by\\s+(?:a|an|the|my|his|her|their)?\\s*${ADULT}\\b`),
     /\babus\w*/, // abuse, abused, abusing (also French "abus", Spanish "abuso")
@@ -37,10 +44,11 @@
     /\bprivate (?:parts|bits|area)\b/,
     /\btouch\w*\s+(?:him|her|me|them)\s+(?:where|in a (?:bad|wrong|weird|strange) way)/,
     /\btouch\w*\s+(?:his|her|my|their)\s+(?:private|bottom|willy|vagina|penis)/,
-    // Serious injury or emergency. "hospital" counts unless the note is about a visit,
-    // a birth or a check-up anywhere in it.
+    // Serious injury or emergency.
     /\bambulance\b/,
-    /^(?![\s\S]*\b(?:visit\w*|new baby|was born|check-?up)\b)[\s\S]*\bhospital\b/,
+    // A visit, a birth or a check-up in the same sentence, right next to "hospital",
+    // makes it ordinary; "we visited nana, then he fell and went to hospital" still counts.
+    /(?:^|[.!?])(?![^.!?]*\b(?:new baby|was born|check-?up)\b)(?![^.!?]*\bvisit\w*\s+(?:\w+\s+){0,3}(?:in|at|to)\s+(?:the\s+)?hospital)(?![^.!?]*\bhospital\s+(?:to\s+visit|visiting))[^.!?]*\bhospital\b/,
     /\b(?:stopped breathing|passed out|unconscious|concussion|seizure|knocked out)\b/,
     /\bbleeding (?:a lot|badly|heavily)|\blots of blood\b/,
     /\bhit by a (?:car|bus|truck|van|bike|motorbike|lorry|train)\b/,
@@ -50,10 +58,11 @@
     // Neglect and danger at home
     /\bleft (?:alone|on (?:his|her|my) own)\b[^.!?]{0,40}\b(?:days?|nights?|overnight|hours)\b/,
     /\b(?:no food|nothing to eat)\b(?![^.!?]*\b(?:in the (?:lunch ?box|bag)|left on (?:the|my) plate)\b)/,
-    /\b(?:hasn'?t|has not|haven'?t|not) eaten (?:anything|for)\b/,
+    /\b(?:hasn'?t|has not|haven'?t|not|didn'?t|did not) (?:eaten|eat) (?:anything|for|since|all day|in days|properly for)\b/,
     /\b(?:scared|afraid|frightened|terrified) (?:to go|of going) home\b/,
     /\b(?:doesn'?t|does not|don'?t|won'?t|do not) want to go home\b(?!\s+(?:from|yet|now|because (?:it was|we were) (?:fun|having fun)))/,
     /\bnot safe (?:at home|there)\b|\b(?:feels?|felt|feeling) unsafe\b|\bunsafe (?:at home|there)\b|\bin danger\b/,
+    /\bhome (?:is|feels|isn'?t) (?:not safe|unsafe|scary|dangerous|safe)\b(?<!is safe)(?<!feels safe)/,
     /\bpolice (?:came|come|took|were called|was called|at our|to our)\b/,
     // Self-harm
     /\bwants? to die\b(?! laughing)|\bwanted to die\b(?! laughing)/,
