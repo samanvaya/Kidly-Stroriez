@@ -51,6 +51,11 @@ npm run eval -- --yes             # real run on the AI in .env: NVIDIA (credits,
 
 Add `--label=before --write-evidence` to save the summary in `docs/evidence/BL-009.md`.
 
+## NVIDIA reasoning settings (optional)
+`NVIDIA_PLAN_REASONING` and `NVIDIA_STORY_REASONING` take `none`, `medium` or `high`.
+Defaults: plans `medium`, story parts `none`. More reasoning can improve stories but
+delays the first words a child sees.
+
 ## Moving between machines
 Never email, message, or paste secrets into a chat window. Get fresh values from the
 sources above on each machine. If a key has ever appeared in a chat transcript or a
